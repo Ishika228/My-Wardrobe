@@ -13,7 +13,13 @@ export default function ClothingDisplays({
   const displayedProducts = React.useMemo(() => {
     if (!activeCategory || activeCategory === 'all') return PRODUCTS;
     const cat = activeCategory.toLowerCase();
-    return PRODUCTS.filter((p) => p.category.toLowerCase() === cat);
+    return PRODUCTS.filter((p) => {
+      const pCat = p.category.toLowerCase();
+      if (cat === 'trousers') return pCat === 'trousers' || pCat === 'skirts' || pCat === 'bottom';
+      if (cat === 'outerwear') return pCat === 'outerwear' || pCat === 'jacket' || pCat === 'coat';
+      if (cat === 'accessories') return pCat === 'accessories' || pCat === 'accessory';
+      return pCat === cat;
+    });
   }, [activeCategory]);
 
   return (

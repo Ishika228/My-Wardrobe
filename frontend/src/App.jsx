@@ -321,20 +321,32 @@ export default function App() {
 
     try {
       const aiResult = await analyzeClothingImage(file);
-      if (aiResult?.classification) {
-        const cls = aiResult.classification.toLowerCase();
-        if (cls.includes('dress')) detectedCategory = 'dresses';
-        else if (cls.includes('jean') || cls.includes('pant') || cls.includes('trouser') || cls.includes('skirt')) detectedCategory = 'trousers';
-        else if (cls.includes('shoe') || cls.includes('sneaker') || cls.includes('heel') || cls.includes('boot')) detectedCategory = 'shoes';
-        else if (cls.includes('jacket') || cls.includes('coat') || cls.includes('outerwear')) detectedCategory = 'outerwear';
-        else if (cls.includes('bag') || cls.includes('accessory')) detectedCategory = 'accessories';
-        else detectedCategory = 'tops';
+      if (aiResult) {
+        const catGroup = (aiResult.category_group || '').toLowerCase();
+        const catName = (aiResult.category || aiResult.classification || '').toLowerCase();
 
-        if (aiResult.color_dominant) {
-          detectedColor = aiResult.color_dominant.hex || detectedColor;
+        if (catGroup === 'top' || catName.includes('shirt') || catName.includes('top') || catName.includes('sweater')) {
+          detectedCategory = 'tops';
+        } else if (catGroup === 'bottom' || catName.includes('jean') || catName.includes('pant') || catName.includes('trouser') || catName.includes('skirt')) {
+          detectedCategory = 'trousers';
+        } else if (catGroup === 'dress' || catName.includes('dress')) {
+          detectedCategory = 'dresses';
+        } else if (catGroup === 'outerwear' || catName.includes('jacket') || catName.includes('coat') || catName.includes('blazer')) {
+          detectedCategory = 'outerwear';
+        } else if (catGroup === 'footwear' || catName.includes('shoe') || catName.includes('sneaker') || catName.includes('heel') || catName.includes('boot')) {
+          detectedCategory = 'shoes';
+        } else if (catGroup === 'accessory' || catName.includes('bag') || catName.includes('belt') || catName.includes('accessory')) {
+          detectedCategory = 'accessories';
         }
-        if (aiResult.item_name) {
-          detectedName = aiResult.item_name;
+
+        if (aiResult.colour?.dominant_hex) {
+          detectedColor = aiResult.colour.dominant_hex;
+        } else if (aiResult.color_dominant?.hex) {
+          detectedColor = aiResult.color_dominant.hex;
+        }
+
+        if (aiResult.category) {
+          detectedName = `${aiResult.colour?.dominant || ''} ${aiResult.category}`.trim();
         }
       }
     } catch (err) {
@@ -367,6 +379,7 @@ export default function App() {
     };
 
     setUploadedClothes((prev) => [newClothItem, ...prev]);
+    setActiveCategory(detectedCategory);
     setSelectedProduct(newClothItem);
     handleTryOn(newClothItem);
     setIsUploadingCloth(false);
@@ -378,11 +391,21 @@ export default function App() {
   const displayedCatalog = useMemo(() => {
     let items = [...uploadedClothes, ...PRODUCTS];
     if (activeCategory !== 'all') {
-      items = items.filter((p) => p.category === activeCategory.toLowerCase());
+      const cat = activeCategory.toLowerCase();
+      items = items.filter((p) => {
+        const itemCat = (p.category || '').toLowerCase();
+        if (cat === 'tops') return itemCat === 'tops' || itemCat === 'top' || itemCat === 'shirt' || itemCat === 't-shirt';
+        if (cat === 'trousers') return itemCat === 'trousers' || itemCat === 'skirts' || itemCat === 'skirt' || itemCat === 'bottom' || itemCat === 'bottoms' || itemCat === 'jeans';
+        if (cat === 'dresses') return itemCat === 'dresses' || itemCat === 'dress';
+        if (cat === 'outerwear') return itemCat === 'outerwear' || itemCat === 'jacket' || itemCat === 'coat' || itemCat === 'coats';
+        if (cat === 'shoes') return itemCat === 'shoes' || itemCat === 'footwear';
+        if (cat === 'accessories') return itemCat === 'accessories' || itemCat === 'accessory' || itemCat === 'bags' || itemCat === 'bag';
+        return itemCat === cat;
+      });
     }
     if (activeOccasion && activeOccasion !== 'All') {
       const occLower = activeOccasion.toLowerCase();
-      const matched = items.filter((p) => p.tags?.includes(occLower));
+      const matched = items.filter((p) => p.tags?.some((t) => t.toLowerCase().includes(occLower)));
       if (matched.length > 0) items = matched;
     }
     return items;
@@ -736,10 +759,31 @@ export default function App() {
             </div>
           </button>
 
-          {/* User's Uploaded Clothes (Only shows clothes uploaded by user) */}
-          {uploadedClothes.length > 0 && (
-            <div className="garment-grid" style={{ marginTop: '9px' }}>
-              {uploadedClothes.map((item) => {
+          {/* Active Category Garments List (Directly reflects selected Clothing Category) */}
+          <div style={{ marginTop: '14px' }}>
+            <div className="catalog-header">
+              <h3 className="catalog-title">
+                {activeCategory === 'all'
+                  ? 'All Pieces'
+                  : activeCategory === 'tops'
+                  ? 'Tops & Shirts'
+                  : activeCategory === 'trousers'
+                  ? 'Bottoms & Trousers'
+                  : activeCategory === 'dresses'
+                  ? 'Dresses'
+                  : activeCategory === 'outerwear'
+                  ? 'Coats & Jackets'
+                  : activeCategory === 'shoes'
+                  ? 'Shoes'
+                  : 'Bags & Accessories'}
+              </h3>
+              <span style={{ fontSize: '11px', color: 'rgba(255, 255, 255, 0.55)' }}>
+                {displayedCatalog.length} {displayedCatalog.length === 1 ? 'piece' : 'pieces'}
+              </span>
+            </div>
+
+            <div className="garment-grid">
+              {displayedCatalog.map((item) => {
                 const isSelected = selectedProduct?.id === item.id;
                 const isWearing =
                   currentOutfit.top?.id === item.id ||
@@ -748,6 +792,7 @@ export default function App() {
                   currentOutfit.outerwear?.id === item.id ||
                   currentOutfit.shoes?.id === item.id ||
                   currentOutfit.accessory?.id === item.id;
+
                 return (
                   <button
                     key={item.id}
@@ -756,11 +801,15 @@ export default function App() {
                       handleTryOn(item);
                     }}
                     className={`garment-card${isSelected ? ' selected' : ''}`}
-                    title={`${item.name} — Click to wear on avatar`}
+                    title={`${item.name} — Click to wear on 3D avatar`}
                   >
-                    <img src={item.image} alt={item.name} className="garment-img" />
+                    {item.image ? (
+                      <img src={item.image} alt={item.name} className="garment-img" />
+                    ) : (
+                      <Shirt size={22} style={{ color: item.primaryColor }} />
+                    )}
                     {isWearing && (
-                      <span className="wearing-dot" title="Currently wearing">
+                      <span className="wearing-dot" title="Currently wearing on avatar">
                         <Check size={9} strokeWidth={3} />
                       </span>
                     )}
@@ -768,7 +817,7 @@ export default function App() {
                 );
               })}
             </div>
-          )}
+          </div>
         </div>
 
         {/* Occasion Filter */}
