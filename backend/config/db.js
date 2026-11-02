@@ -1,7 +1,8 @@
 import mongoose from 'mongoose';
+import dns from 'dns';
 
 /**
- * Connects to MongoDB Community Edition using Mongoose.
+ * Connects to MongoDB (Local or Atlas Cloud) using Mongoose.
  * Reads the connection string from environment variables (MONGODB_URI).
  * Does not hardcode credentials or connection URLs.
  * 
@@ -13,6 +14,15 @@ export const connectDB = async () => {
 
     if (!mongoUri) {
       throw new Error('MONGODB_URI environment variable is missing.');
+    }
+
+    // Ensure robust DNS resolution for MongoDB Atlas SRV connection strings on Windows
+    if (mongoUri.startsWith('mongodb+srv:')) {
+      try {
+        dns.setServers(['8.8.8.8', '1.1.1.1']);
+      } catch {
+        // Fall back to system default resolvers
+      }
     }
 
     const conn = await mongoose.connect(mongoUri);
