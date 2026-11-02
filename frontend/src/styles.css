@@ -542,62 +542,54 @@ button {
   color: #ffffff;
 }
 
-.upload-cloth-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.35), rgba(236, 72, 153, 0.35));
-  border: 1px solid rgba(167, 139, 250, 0.5);
-  color: #ffffff;
-  padding: 3px 9px;
-  border-radius: 9999px;
-  font-size: 11px;
-  font-weight: 600;
+.upload-dropzone {
+  width: 100%;
+  padding: 14px 12px;
+  border-radius: 12px;
+  border: 1.5px dashed rgba(167, 139, 250, 0.65);
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.12), rgba(236, 72, 153, 0.08));
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.22s ease;
+  text-align: left;
 }
 
-.upload-cloth-btn:hover {
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.6), rgba(236, 72, 153, 0.6));
-  border-color: #a78bfa;
+.upload-dropzone:hover {
+  border-color: #c084fc;
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.22), rgba(236, 72, 153, 0.16));
   transform: translateY(-1px);
-  box-shadow: 0 0 10px rgba(167, 139, 250, 0.4);
+  box-shadow: 0 4px 18px rgba(167, 139, 250, 0.3);
 }
 
-.upload-cloth-card {
-  border: 1.5px dashed rgba(167, 139, 250, 0.6) !important;
-  background: rgba(139, 92, 246, 0.08) !important;
-  cursor: pointer;
-  display: flex !important;
-  flex-direction: column;
+.upload-dropzone-inner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.upload-icon-circle {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: rgba(167, 139, 250, 0.2);
+  border: 1px solid rgba(167, 139, 250, 0.4);
+  display: flex;
   align-items: center;
   justify-content: center;
-  gap: 3px;
-  text-align: center;
-}
-
-.upload-cloth-card:hover {
-  border-color: #c084fc !important;
-  background: rgba(139, 92, 246, 0.18) !important;
-  transform: translateY(-2px);
-  box-shadow: 0 0 14px rgba(167, 139, 250, 0.35);
-}
-
-.upload-cloth-content {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-}
-
-.upload-cloth-icon {
   color: #c084fc;
+  flex-shrink: 0;
 }
 
-.upload-cloth-text {
-  font-size: 10px;
-  font-weight: 600;
-  color: #e9d5ff;
+.upload-primary-text {
+  font-size: 13px;
+  font-weight: 700;
+  color: #ffffff;
+  margin: 0;
+}
+
+.upload-sub-text {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.6);
+  margin: 2px 0 0;
 }
 
 .view-all-btn {

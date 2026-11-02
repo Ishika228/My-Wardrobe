@@ -694,7 +694,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* Garment Catalog */}
+        {/* Upload Cloth Feature */}
         <div>
           <input
             type="file"
@@ -705,70 +705,70 @@ export default function App() {
           />
 
           <div className="catalog-header">
-            <h3 className="catalog-title">
-              {activeCategory === 'all' ? 'Featured Pieces' : activeCategory.charAt(0).toUpperCase() + activeCategory.slice(1)}
-            </h3>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <button
-                type="button"
-                className="upload-cloth-btn"
-                onClick={() => fileInputRef.current?.click()}
-                title="Upload cloth image from device"
-              >
-                <Upload size={12} />
-                <span>{isUploadingCloth ? 'Analyzing…' : 'Upload Cloth'}</span>
-              </button>
-              <button className="view-all-btn" onClick={() => setActiveCategory('all')}>
-                <span>View All ({displayedCatalog.length})</span>
-                <ChevronRight size={12} />
-              </button>
-            </div>
+            <h3 className="catalog-title">Upload Cloth</h3>
+            {uploadedClothes.length > 0 && (
+              <span style={{ fontSize: '11px', color: 'rgba(255, 255, 255, 0.5)' }}>
+                {uploadedClothes.length} {uploadedClothes.length === 1 ? 'piece' : 'pieces'}
+              </span>
+            )}
           </div>
-          <div className="garment-grid">
-            {/* Direct Upload Tile */}
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="garment-card upload-cloth-card"
-              title="Click to upload your own clothing photo"
-              disabled={isUploadingCloth}
-            >
-              <div className="upload-cloth-content">
-                <Upload size={18} className="upload-cloth-icon" />
-                <span className="upload-cloth-text">{isUploadingCloth ? 'Analyzing…' : '+ Upload'}</span>
-              </div>
-            </button>
 
-            {displayedCatalog.map((item) => {
-              const isSelected = selectedProduct?.id === item.id;
-              const isWearing =
-                currentOutfit.top?.id === item.id ||
-                currentOutfit.bottom?.id === item.id ||
-                currentOutfit.dress?.id === item.id ||
-                currentOutfit.outerwear?.id === item.id ||
-                currentOutfit.shoes?.id === item.id ||
-                currentOutfit.accessory?.id === item.id;
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => setSelectedProduct(item)}
-                  className={`garment-card${isSelected ? ' selected' : ''}`}
-                  title={`${item.name} — $${item.price}`}
-                >
-                  {item.image ? (
+          {/* Dedicated Upload Button / Dropzone */}
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="upload-dropzone"
+            disabled={isUploadingCloth}
+            title="Upload cloth image from your computer to try on 3D avatar"
+          >
+            <div className="upload-dropzone-inner">
+              <div className="upload-icon-circle">
+                <Upload size={20} />
+              </div>
+              <div>
+                <p className="upload-primary-text">
+                  {isUploadingCloth ? 'Analyzing Garment…' : 'Upload Cloth Image'}
+                </p>
+                <p className="upload-sub-text">
+                  Click to select photo · Auto 3D Try-On
+                </p>
+              </div>
+            </div>
+          </button>
+
+          {/* User's Uploaded Clothes (Only shows clothes uploaded by user) */}
+          {uploadedClothes.length > 0 && (
+            <div className="garment-grid" style={{ marginTop: '9px' }}>
+              {uploadedClothes.map((item) => {
+                const isSelected = selectedProduct?.id === item.id;
+                const isWearing =
+                  currentOutfit.top?.id === item.id ||
+                  currentOutfit.bottom?.id === item.id ||
+                  currentOutfit.dress?.id === item.id ||
+                  currentOutfit.outerwear?.id === item.id ||
+                  currentOutfit.shoes?.id === item.id ||
+                  currentOutfit.accessory?.id === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => {
+                      setSelectedProduct(item);
+                      handleTryOn(item);
+                    }}
+                    className={`garment-card${isSelected ? ' selected' : ''}`}
+                    title={`${item.name} — Click to wear on avatar`}
+                  >
                     <img src={item.image} alt={item.name} className="garment-img" />
-                  ) : (
-                    <Shirt size={22} style={{ color: item.primaryColor }} />
-                  )}
-                  {isWearing && (
-                    <span className="wearing-dot" title="Currently wearing">
-                      <Check size={9} strokeWidth={3} />
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
+                    {isWearing && (
+                      <span className="wearing-dot" title="Currently wearing">
+                        <Check size={9} strokeWidth={3} />
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* Occasion Filter */}
