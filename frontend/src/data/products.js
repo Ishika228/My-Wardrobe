@@ -72,7 +72,7 @@ export const PRODUCTS = [
     silhouette: 'sweater',
     position3D: [-1.4, 2.1, -1.8],
     complementaryIds: ['trouser-1', 'shoe-3', 'acc-1'],
-    image: 'https://images.unsplash.com/photo-1576566588028-4147f3842f27?w=400&auto=format&fit=crop&q=80'
+    image: 'https://images.unsplash.com/photo-1576871337622-98d48d1cf531?w=400&auto=format&fit=crop&q=80'
   },
   {
     id: 'top-3',

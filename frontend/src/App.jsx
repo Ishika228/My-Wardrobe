@@ -27,7 +27,9 @@ import {
   Sparkle,
   Footprints,
   Maximize2,
-  Tv
+  Tv,
+  Upload,
+  Camera
 } from 'lucide-react';
 import VRScene from './components/VRScene.jsx';
 import ProductDetailsModal from './components/ProductDetailsModal.jsx';
@@ -35,6 +37,7 @@ import CartDrawer from './components/CartDrawer.jsx';
 import WishlistDrawer from './components/WishlistDrawer.jsx';
 import StylistRecommendations from './components/StylistRecommendations.jsx';
 import { PRODUCTS, CATEGORIES, getRecommendations } from './data/products.js';
+import { analyzeClothingImage } from './services/aiService.js';
 
 // Loading fallback for 3D canvas
 function LoadingScreen() {
@@ -96,6 +99,11 @@ export default function App() {
   // --- Mobile Touch D-Pad State ---
   const [dpadInput, setDpadInput] = useState({ x: 0, y: 0 });
   const dpadTimerRef = useRef(null);
+
+  // --- Upload Cloth Feature ---
+  const [uploadedClothes, setUploadedClothes] = useState([]);
+  const [isUploadingCloth, setIsUploadingCloth] = useState(false);
+  const fileInputRef = useRef(null);
 
   // --- Handlers: Virtual Try-On ---
   const handleTryOn = (product) => {
@@ -297,9 +305,78 @@ export default function App() {
     setDpadInput({ x: 0, y: 0 });
   };
 
+  // --- Upload Cloth Image Handler ---
+  const handleClothUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploadingCloth(true);
+    const localImageUrl = URL.createObjectURL(file);
+
+    let detectedCategory = activeCategory !== 'all' ? activeCategory : 'tops';
+    let detectedName = file.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ');
+    detectedName = detectedName.replace(/\b\w/g, (c) => c.toUpperCase());
+    let detectedColor = '#d946ef';
+    let detectedTags = ['custom', 'uploaded', 'trending', 'casual'];
+
+    try {
+      const aiResult = await analyzeClothingImage(file);
+      if (aiResult?.classification) {
+        const cls = aiResult.classification.toLowerCase();
+        if (cls.includes('dress')) detectedCategory = 'dresses';
+        else if (cls.includes('jean') || cls.includes('pant') || cls.includes('trouser') || cls.includes('skirt')) detectedCategory = 'trousers';
+        else if (cls.includes('shoe') || cls.includes('sneaker') || cls.includes('heel') || cls.includes('boot')) detectedCategory = 'shoes';
+        else if (cls.includes('jacket') || cls.includes('coat') || cls.includes('outerwear')) detectedCategory = 'outerwear';
+        else if (cls.includes('bag') || cls.includes('accessory')) detectedCategory = 'accessories';
+        else detectedCategory = 'tops';
+
+        if (aiResult.color_dominant) {
+          detectedColor = aiResult.color_dominant.hex || detectedColor;
+        }
+        if (aiResult.item_name) {
+          detectedName = aiResult.item_name;
+        }
+      }
+    } catch (err) {
+      console.info('Client fallback for cloth upload:', err.message);
+    }
+
+    const newClothItem = {
+      id: `custom-${Date.now()}`,
+      name: detectedName || 'Custom Uploaded Piece',
+      category: detectedCategory,
+      price: 110,
+      discountPrice: null,
+      rating: 5.0,
+      reviewsCount: 1,
+      description: 'Your custom clothing item uploaded into your WardrobeWise closet. Ready for 3D try-on and smart styling recommendations.',
+      details: ['Custom Wardrobe Upload', 'Personal Virtual Try-On Asset', 'High-Res Preview'],
+      sizes: ['XS', 'S', 'M', 'L'],
+      colors: [{ name: 'Custom Hue', hex: detectedColor }],
+      primaryColor: detectedColor,
+      brand: 'My Closet',
+      inStock: true,
+      stockCount: 1,
+      featured: true,
+      tags: detectedTags,
+      garmentType: detectedCategory === 'dresses' ? 'dress' : detectedCategory === 'trousers' ? 'bottom' : detectedCategory === 'shoes' ? 'shoes' : 'top',
+      silhouette: detectedCategory === 'dresses' ? 'slip-dress' : 'custom',
+      position3D: [0, 2.0, -1.8],
+      complementaryIds: [],
+      image: localImageUrl
+    };
+
+    setUploadedClothes((prev) => [newClothItem, ...prev]);
+    setSelectedProduct(newClothItem);
+    handleTryOn(newClothItem);
+    setIsUploadingCloth(false);
+
+    if (e.target) e.target.value = '';
+  };
+
   // Filtered Products for Right Wardrobe Sidebar
   const displayedCatalog = useMemo(() => {
-    let items = PRODUCTS;
+    let items = [...uploadedClothes, ...PRODUCTS];
     if (activeCategory !== 'all') {
       items = items.filter((p) => p.category === activeCategory.toLowerCase());
     }
@@ -309,7 +386,7 @@ export default function App() {
       if (matched.length > 0) items = matched;
     }
     return items;
-  }, [activeCategory, activeOccasion]);
+  }, [activeCategory, activeOccasion, uploadedClothes]);
 
   return (
     <div className="app-root">
@@ -619,16 +696,49 @@ export default function App() {
 
         {/* Garment Catalog */}
         <div>
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleClothUpload}
+            accept="image/*"
+            style={{ display: 'none' }}
+          />
+
           <div className="catalog-header">
             <h3 className="catalog-title">
               {activeCategory === 'all' ? 'Featured Pieces' : activeCategory.charAt(0).toUpperCase() + activeCategory.slice(1)}
             </h3>
-            <button className="view-all-btn" onClick={() => setActiveCategory('all')}>
-              <span>View All ({displayedCatalog.length})</span>
-              <ChevronRight size={12} />
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <button
+                type="button"
+                className="upload-cloth-btn"
+                onClick={() => fileInputRef.current?.click()}
+                title="Upload cloth image from device"
+              >
+                <Upload size={12} />
+                <span>{isUploadingCloth ? 'Analyzing…' : 'Upload Cloth'}</span>
+              </button>
+              <button className="view-all-btn" onClick={() => setActiveCategory('all')}>
+                <span>View All ({displayedCatalog.length})</span>
+                <ChevronRight size={12} />
+              </button>
+            </div>
           </div>
           <div className="garment-grid">
+            {/* Direct Upload Tile */}
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="garment-card upload-cloth-card"
+              title="Click to upload your own clothing photo"
+              disabled={isUploadingCloth}
+            >
+              <div className="upload-cloth-content">
+                <Upload size={18} className="upload-cloth-icon" />
+                <span className="upload-cloth-text">{isUploadingCloth ? 'Analyzing…' : '+ Upload'}</span>
+              </div>
+            </button>
+
             {displayedCatalog.map((item) => {
               const isSelected = selectedProduct?.id === item.id;
               const isWearing =
