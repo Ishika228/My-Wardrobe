@@ -134,7 +134,35 @@ const SAMPLE_WARDROBE_ITEMS = [
     favorite: false,
   },
 
-  // DRESSES
+  // DRESSES & INDIAN ETHNIC WEAR
+  {
+    name: 'Royal Banarasi Crimson Silk Saree',
+    category: 'Dress',
+    subCategory: 'Saree',
+    color: 'Burgundy',
+    secondaryColors: ['Gold', 'Crimson'],
+    material: 'Pure Mulberry Silk with Gold Zari',
+    brand: 'Varanasi Heritage',
+    season: ['Spring', 'Autumn', 'Winter'],
+    occasion: ['Formal', 'Party', 'Dinner'],
+    style: ['Chic', 'Formal', 'Ethnic'],
+    imageUrl: 'https://images.unsplash.com/photo-1610030469983-98e550d6193c?w=700&auto=format&fit=crop',
+    favorite: true,
+  },
+  {
+    name: 'Emerald Lucknowi Chikankari Anarkali Suit',
+    category: 'Dress',
+    subCategory: 'Anarkali',
+    color: 'Emerald',
+    secondaryColors: ['White', 'Gold'],
+    material: 'Georgette with Chikankari Hand Embroidery',
+    brand: 'Oudh Couture',
+    season: ['Spring', 'Summer', 'Autumn', 'Winter'],
+    occasion: ['Formal', 'Party', 'Dinner'],
+    style: ['Chic', 'Formal', 'Ethnic'],
+    imageUrl: 'https://images.unsplash.com/photo-1583391733956-3750e0ff4e8b?w=700&auto=format&fit=crop',
+    favorite: true,
+  },
   {
     name: 'Little Black Cocktail Dress',
     category: 'Dress',
@@ -181,6 +209,20 @@ const SAMPLE_WARDROBE_ITEMS = [
   },
 
   // FOOTWEAR
+  {
+    name: 'Handcrafted Zari Embroidered Velvet Juttis',
+    category: 'Shoes',
+    subCategory: 'Ethnic Juttis',
+    color: 'Gold',
+    secondaryColors: ['Crimson', 'Antique Brass'],
+    material: 'Plush Velvet with Pure Gold Zardozi Embroidery',
+    brand: 'Mughal Artisans',
+    season: ['Spring', 'Summer', 'Autumn', 'Winter'],
+    occasion: ['Party', 'Formal', 'Dinner'],
+    style: ['Chic', 'Ethnic', 'Formal'],
+    imageUrl: 'https://images.unsplash.com/photo-1543163521-1bf539c55dd2?w=700&auto=format&fit=crop',
+    favorite: true,
+  },
   {
     name: 'Polished Black Leather Loafers',
     category: 'Shoes',

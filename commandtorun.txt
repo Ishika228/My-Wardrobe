@@ -1,9 +1,45 @@
-cd ai_service
-node tests/test_recommender.js
-python tests/test_vision.py
-python -c "from vision.classifier import analyze_clothing_image; 
+================================================================================
+ WARDROBEWISE — FULL PROJECT COMMAND GUIDE & STARTUP INSTRUCTIONS
+================================================================================
 
+1. POPULATE / SEED MONGODB WITH DUMMY CLOTHES & USERS:
+   cd backend
+   node scripts/seedDatabase.js
 
-main command: uvicorn api.app:app --reload --host 127.0.0.1 --port 8000
+   (Seeds 13 wardrobe pieces, 4 styled outfits, and 2 users into MongoDB Atlas)
 
-http://127.0.0.1:8000
+--------------------------------------------------------------------------------
+2. START BACKEND SERVER (Port 5000):
+   cd backend
+   node server.js
+   # or with live reload:
+   npm run dev
+
+   Endpoints:
+   - Health check: http://localhost:5000/api/health
+   - Clothes API:  http://localhost:5000/api/clothes
+   - Auth API:     http://localhost:5000/api/auth
+
+--------------------------------------------------------------------------------
+3. START FRONTEND VIRTUAL BOUTIQUE & REAL LADY TRY-ON (Port 5173):
+   cd frontend
+   npm run dev
+
+   Open in browser: http://localhost:5173
+   Features:
+   - "Real Lady Try-On" Studio (Photorealistic Model Elena trying on clothes)
+   - 3D VR Penthouse Boutique with animated avatar, mirror check, 360 rotation & WebXR
+   - MongoDB Wardrobe: Browse existing database clothes, add new clothes to MongoDB
+   - Try on any piece in real-time across both 3D VR and the Real Lady!
+
+--------------------------------------------------------------------------------
+4. (OPTIONAL) START FASTAPI AI VISION & RECOMMENDATION SERVICE (Port 8000):
+   cd ai_service
+   uvicorn api.app:app --reload --host 127.0.0.1 --port 8000
+
+--------------------------------------------------------------------------------
+DEMO LOGIN CREDENTIALS (Pre-seeded in MongoDB Atlas):
+Email:    user@wardrobewise.com
+Password: Password123!
+(Or click the green "Instant Demo Login" button inside the Sign In modal)
+================================================================================

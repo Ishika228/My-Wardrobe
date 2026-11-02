@@ -13,13 +13,10 @@ import {
   updateClothingAnalysis,
   reanalyzeClothingItem,
 } from '../controllers/clothingController.js';
-import { protect } from '../middleware/authMiddleware.js';
+import { protect, optionalProtect } from '../middleware/authMiddleware.js';
 import { uploadClothingImageMiddleware } from '../middleware/uploadMiddleware.js';
 
 const router = express.Router();
-
-// Apply authentication middleware to all clothing endpoints
-router.use(protect);
 
 /**
  * @route   POST /api/clothes
@@ -27,13 +24,13 @@ router.use(protect);
  * @access  Private
  * 
  * @route   GET /api/clothes
- * @desc    Get all clothing items with filters, search, and pagination
- * @access  Private
+ * @desc    Get clothing items with filters, search, and pagination (public/demo or user-specific)
+ * @access  Public / Private
  */
 router
   .route('/')
-  .post(addClothingItem)
-  .get(getClothingItems);
+  .post(optionalProtect, addClothingItem)
+  .get(optionalProtect, getClothingItems);
 
 /**
  * @route   POST /api/clothes/:id/image
@@ -46,22 +43,22 @@ router
  */
 router
   .route('/:id/image')
-  .post(uploadClothingImageMiddleware, uploadClothingImage)
-  .delete(deleteClothingImage);
+  .post(optionalProtect, uploadClothingImageMiddleware, uploadClothingImage)
+  .delete(optionalProtect, deleteClothingImage);
 
 /**
  * @route   POST /api/clothes/:id/analyze
  * @desc    Send clothing image to AI recognition service and save predictions
  * @access  Private
  */
-router.post('/:id/analyze', analyzeClothingItem);
+router.post('/:id/analyze', optionalProtect, analyzeClothingItem);
 
 /**
  * @route   POST /api/clothes/:id/reanalyze
  * @desc    Re-analyze clothing image with AI service, preserving manual overrides
  * @access  Private
  */
-router.post('/:id/reanalyze', reanalyzeClothingItem);
+router.post('/:id/reanalyze', optionalProtect, reanalyzeClothingItem);
 
 /**
  * @route   GET /api/clothes/:id/analysis
@@ -74,20 +71,20 @@ router.post('/:id/reanalyze', reanalyzeClothingItem);
  */
 router
   .route('/:id/analysis')
-  .get(getClothingAnalysis)
-  .patch(updateClothingAnalysis);
+  .get(protect, getClothingAnalysis)
+  .patch(protect, updateClothingAnalysis);
 
 /**
  * @route   PATCH /api/clothes/:id/favorite
  * @desc    Toggle favorite status of a clothing item
  * @access  Private
  */
-router.patch('/:id/favorite', toggleFavorite);
+router.patch('/:id/favorite', optionalProtect, toggleFavorite);
 
 /**
  * @route   GET /api/clothes/:id
  * @desc    Get a single clothing item by ID
- * @access  Private
+ * @access  Public / Private
  * 
  * @route   PUT /api/clothes/:id
  * @desc    Update an existing clothing item
@@ -99,8 +96,8 @@ router.patch('/:id/favorite', toggleFavorite);
  */
 router
   .route('/:id')
-  .get(getClothingItemById)
-  .put(updateClothingItem)
-  .delete(deleteClothingItem);
+  .get(optionalProtect, getClothingItemById)
+  .put(optionalProtect, updateClothingItem)
+  .delete(optionalProtect, deleteClothingItem);
 
 export default router;

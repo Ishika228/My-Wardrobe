@@ -1,4 +1,5 @@
 import { aiConfig } from '../config/aiConfig.js';
+import { groqRecommendOutfits } from './groqService.js';
 
 /**
  * Formats user's raw database ClothingItem documents into a clean schema for the AI service.
@@ -8,25 +9,27 @@ import { aiConfig } from '../config/aiConfig.js';
  */
 export const formatWardrobeForAI = (clothingItems = []) => {
   return clothingItems.map((item) => ({
-    id: item._id ? item._id.toString() : String(item.id),
-    name: item.name,
-    category: item.category,
-    subCategory: item.subCategory || null,
-    color: item.color || null,
+    id:             item._id ? item._id.toString() : String(item.id),
+    name:           item.name,
+    category:       item.category,
+    subCategory:    item.subCategory    || null,
+    color:          item.color          || null,
     secondaryColors: Array.isArray(item.secondaryColors) ? item.secondaryColors : [],
-    pattern: item.pattern || null,
-    material: item.material || null,
-    season: Array.isArray(item.season) ? item.season : [],
-    occasion: Array.isArray(item.occasion) ? item.occasion : [],
-    style: Array.isArray(item.style) ? item.style : [],
-    imageUrl: item.imageUrl || null,
-    isFavorite: Boolean(item.isFavorite),
+    pattern:        item.pattern        || null,
+    material:       item.material       || null,
+    season:         Array.isArray(item.season)   ? item.season   : [],
+    occasion:       Array.isArray(item.occasion) ? item.occasion : [],
+    style:          Array.isArray(item.style)    ? item.style    : [],
+    imageUrl:       item.imageUrl       || null,
+    isFavorite:     Boolean(item.isFavorite),
+    timesWorn:      typeof item.timesWorn === 'number' ? item.timesWorn : null,
+    lastWorn:       item.lastWorn       || null,
   }));
 };
 
 /**
- * Isolated mock recommendation provider for offline testing when external AI service is unavailable.
- * Clearly flagged with isMock: true so mock output is never mistaken for real AI model inferences.
+ * Isolated mock recommendation provider for offline testing.
+ * Clearly flagged with isMock: true so mock output is never mistaken for real AI inferences.
  *
  * @param {object} params
  * @param {Array<object>} params.wardrobeItems - Formatted wardrobe items
@@ -38,87 +41,70 @@ export const getMockOutfitRecommendation = ({ wardrobeItems = [], preferences = 
     return {
       success: true,
       isMock: true,
-      data: {
-        recommendations: [],
-        message: 'No wardrobe items provided to build recommendations.',
-      },
+      data: { recommendations: [], message: 'No wardrobe items provided to build recommendations.' },
     };
   }
 
-  // Pick suitable items from user's actual wardrobe
-  // Group by broad category to compose an outfit
-  const tops = wardrobeItems.filter((i) =>
-    ['Shirt', 'T-Shirt', 'Jacket'].includes(i.category)
-  );
-  const bottoms = wardrobeItems.filter((i) =>
-    ['Jeans', 'Trousers', 'Skirt'].includes(i.category)
-  );
-  const shoes = wardrobeItems.filter((i) => i.category === 'Shoes');
-  const dresses = wardrobeItems.filter((i) => i.category === 'Dress');
+  const tops     = wardrobeItems.filter((i) => ['Shirt', 'T-Shirt', 'Jacket'].includes(i.category));
+  const bottoms  = wardrobeItems.filter((i) => ['Jeans', 'Trousers', 'Skirt'].includes(i.category));
+  const shoes    = wardrobeItems.filter((i) => ['Shoes', 'Sneakers', 'Boots'].includes(i.category));
+  const dresses  = wardrobeItems.filter((i) => i.category === 'Dress');
 
   const selectedIds = [];
-
   if (dresses.length > 0 && Math.random() > 0.5) {
     selectedIds.push(dresses[0].id);
     if (shoes.length > 0) selectedIds.push(shoes[0].id);
   } else {
-    // Pick 1 top
-    if (tops.length > 0) selectedIds.push(tops[0].id);
-    // Pick 1 bottom
+    if (tops.length   > 0) selectedIds.push(tops[0].id);
     if (bottoms.length > 0) selectedIds.push(bottoms[0].id);
-    // Pick shoes if available
-    if (shoes.length > 0) selectedIds.push(shoes[0].id);
+    if (shoes.length  > 0) selectedIds.push(shoes[0].id);
   }
-
-  // Fallback: If category matching didn't yield at least 1 item, take up to first 3 items
   if (selectedIds.length === 0) {
     wardrobeItems.slice(0, 3).forEach((item) => selectedIds.push(item.id));
   }
 
   const occasion = preferences.occasion || 'Everyday';
-  const style = preferences.style || 'Casual';
-  const weather = preferences.weather || 'Moderate';
+  const style    = preferences.style    || 'Casual';
+  const weather  = preferences.weather  || 'Moderate';
 
   return {
     success: true,
     isMock: true,
     data: {
-      recommendations: [
-        {
-          outfitName: `${occasion} ${style} Ensemble`,
-          clothingItemIds: selectedIds,
-          confidence: 0.91,
-          explanation: `A curated combination matching your ${style.toLowerCase()} style preference for ${occasion.toLowerCase()} in ${weather.toLowerCase()} conditions.`,
-          occasion,
-          style,
-          season: weather,
-        },
-      ],
+      recommendations: [{
+        outfitName:      `${occasion} ${style} Ensemble`,
+        clothingItemIds: selectedIds,
+        confidence:      0.72,
+        explanation:     `A curated combination matching your ${style.toLowerCase()} style preference for ${occasion.toLowerCase()} in ${weather.toLowerCase()} conditions.`,
+        occasion,
+        style,
+        season:          weather,
+        colorHarmony:    'Balanced neutral tones for everyday wear.',
+        sustainabilityNote: null,
+      }],
     },
   };
 };
 
 /**
- * Validates and normalizes raw recommendation response from AI service or mock adapter.
+ * Validates and normalizes raw recommendation response from any AI source or mock.
  *
- * @param {object} rawData - Raw data from AI service
+ * @param {Array|object} rawData - Raw recommendations array or object
  * @returns {Array<object>} Normalized recommendations array
  */
 export const normalizeRecommendationResponse = (rawData = {}) => {
-  if (!rawData || typeof rawData !== 'object') {
-    throw new Error('Malformed AI recommendation payload received.');
-  }
-
-  const rawRecommendations = Array.isArray(rawData.recommendations)
-    ? rawData.recommendations
-    : [];
+  const rawRecommendations = Array.isArray(rawData)
+    ? rawData
+    : Array.isArray(rawData.recommendations)
+      ? rawData.recommendations
+      : [];
 
   return rawRecommendations.map((rec, index) => {
     const rawIds = Array.isArray(rec.clothingItemIds)
       ? rec.clothingItemIds.map(String)
       : Array.isArray(rec.itemIds)
-      ? rec.itemIds.map(String)
-      : [];
+        ? rec.itemIds.map(String)
+        : [];
 
     let confidence = 0.85;
     if (typeof rec.confidence === 'number' && !isNaN(rec.confidence)) {
@@ -126,148 +112,109 @@ export const normalizeRecommendationResponse = (rawData = {}) => {
     }
 
     return {
-      outfitName: rec.outfitName ? String(rec.outfitName).trim() : `Recommended Outfit ${index + 1}`,
-      clothingItemIds: [...new Set(rawIds)],
+      outfitName:        rec.outfitName        ? String(rec.outfitName).trim()        : `Recommended Outfit ${index + 1}`,
+      clothingItemIds:   [...new Set(rawIds)],
       confidence,
-      explanation: rec.explanation
-        ? String(rec.explanation).trim()
-        : 'Smart combination recommended based on your preferences.',
-      occasion: rec.occasion ? String(rec.occasion).trim() : null,
-      style: rec.style ? String(rec.style).trim() : null,
-      season: rec.season ? String(rec.season).trim() : null,
+      explanation:       rec.explanation       ? String(rec.explanation).trim()       : 'Smart combination recommended based on your preferences.',
+      occasion:          rec.occasion          ? String(rec.occasion).trim()          : null,
+      style:             rec.style             ? String(rec.style).trim()             : null,
+      season:            rec.season            ? String(rec.season).trim()            : null,
+      colorHarmony:      rec.colorHarmony      ? String(rec.colorHarmony).trim()      : null,
+      sustainabilityNote: rec.sustainabilityNote ? String(rec.sustainabilityNote).trim() : null,
     };
   });
 };
 
 /**
- * Sends user wardrobe items and style preferences to external Python AI recommendation service.
- * Handles timeouts, network failures, schema validation, and configurable mock fallback.
+ * Main entry point: Generates outfit recommendations.
+ *
+ * Priority order:
+ *   1. Groq LLaMA 3.3 70B  — highest intelligence, styling explanations
+ *   2. OpenCV JS rule-based service — fallback
+ *   3. Mock adapter               — offline fallback
  *
  * @param {object} params
- * @param {Array<object>} params.wardrobeItems - User's wardrobe items
- * @param {object} params.preferences - User preferences (occasion, style, weather, colors, etc.)
- * @returns {Promise<{success: boolean, isMock: boolean, recommendations: Array<object>}>}
+ * @param {Array<object>} params.wardrobeItems - User's clothing items from MongoDB
+ * @param {object} params.preferences - User preferences
+ * @returns {Promise<{success, isMock, isGroq, recommendations}>}
  */
 export const requestOutfitRecommendations = async ({ wardrobeItems = [], preferences = {} }) => {
   const formattedWardrobe = formatWardrobeForAI(wardrobeItems);
 
-  const payload = {
-    wardrobe: formattedWardrobe,
-    preferences: {
-      occasion: preferences.occasion ? String(preferences.occasion).trim() : null,
-      style: preferences.style ? String(preferences.style).trim() : null,
-      weather: preferences.weather ? String(preferences.weather).trim() : null,
-      preferredColors: Array.isArray(preferences.preferredColors)
-        ? preferences.preferredColors.map((c) => String(c).trim()).filter(Boolean)
-        : typeof preferences.preferredColors === 'string' && preferences.preferredColors.trim()
-        ? preferences.preferredColors.split(',').map((c) => c.trim()).filter(Boolean)
-        : [],
-      otherPreferences: preferences.otherPreferences
-        ? String(preferences.otherPreferences).trim()
-        : null,
-    },
-  };
+  // ── 1. Try Groq AI ──────────────────────────────────────────────────────────
+  if (process.env.GROQ_API_KEY) {
+    try {
+      console.log(`[AI Recommendation] Using Groq LLaMA for ${formattedWardrobe.length} wardrobe items`);
+      const groqResult = await groqRecommendOutfits({
+        wardrobeItems: formattedWardrobe,
+        preferences,
+      });
 
+      const normalized = normalizeRecommendationResponse(groqResult.recommendations);
+      return {
+        success:   true,
+        isMock:    false,
+        isGroq:    true,
+        recommendations: normalized,
+        modelUsed: groqResult.modelUsed || 'llama-3.3-70b-versatile',
+      };
+    } catch (groqErr) {
+      console.warn(`[AI Recommendation] Groq failed (${groqErr.message}). Falling back to rule-based service.`);
+    }
+  } else {
+    console.warn('[AI Recommendation] GROQ_API_KEY not set. Trying rule-based service.');
+  }
+
+  // ── 2. Try OpenCV / rule-based JS recommendation service ───────────────────
+  const payload   = { wardrobe: formattedWardrobe, preferences };
   const targetUrl = `${aiConfig.recommendationServiceUrl}${aiConfig.recommendationEndpoint}`;
 
   try {
     const response = await fetch(targetUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(aiConfig.recommendationTimeoutMs),
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(payload),
+      signal:  AbortSignal.timeout(aiConfig.recommendationTimeoutMs),
     });
 
     if (!response.ok) {
-      if (
-        (response.status === 404 || response.status === 502 || response.status === 503) &&
-        aiConfig.recommendationMockFallback
-      ) {
-        console.warn(
-          `[AI Recommendation Notice] AI recommendation service at ${targetUrl} returned HTTP ${response.status}. Falling back to isolated mock adapter.`
-        );
-        const mockResult = getMockOutfitRecommendation({
-          wardrobeItems: formattedWardrobe,
-          preferences,
-        });
-        const normalized = normalizeRecommendationResponse(mockResult.data);
-        return {
-          success: true,
-          isMock: true,
-          recommendations: normalized,
-        };
-      }
-
-      const errorText = await response.text().catch(() => '');
-      const error = new Error(
-        `AI recommendation service returned HTTP ${response.status}: ${errorText || response.statusText}`
-      );
-      error.statusCode = 502;
-      throw error;
+      throw new Error(`Rule-based service returned HTTP ${response.status}`);
     }
 
     const json = await response.json();
-
     if (!json || json.success !== true || !json.data) {
-      const error = new Error('AI recommendation service returned invalid or missing recommendation data.');
-      error.statusCode = 502;
-      throw error;
+      throw new Error('Rule-based service returned invalid data.');
     }
 
     const normalized = normalizeRecommendationResponse(json.data);
+    console.log('[AI Recommendation] Rule-based service succeeded.');
+    return { success: true, isMock: false, isGroq: false, recommendations: normalized };
 
-    return {
-      success: true,
-      isMock: false,
-      recommendations: normalized,
-    };
-  } catch (err) {
+  } catch (serviceErr) {
     const isNetworkError =
-      err.code === 'ECONNREFUSED' ||
-      err.code === 'ENOTFOUND' ||
-      err.name === 'TimeoutError' ||
-      err.name === 'AbortError' ||
-      err.message?.includes('fetch failed') ||
-      err.message?.includes('ECONNREFUSED');
+      serviceErr.code === 'ECONNREFUSED' ||
+      serviceErr.code === 'ENOTFOUND'    ||
+      serviceErr.name === 'TimeoutError' ||
+      serviceErr.name === 'AbortError'   ||
+      serviceErr.message?.includes('fetch failed') ||
+      serviceErr.message?.includes('ECONNREFUSED');
 
-    // If mock fallback enabled and service is offline, return mock recommendation
-    if (isNetworkError && aiConfig.recommendationMockFallback) {
-      console.warn(
-        `[AI Recommendation Notice] AI recommendation service at ${targetUrl} is unreachable (${err.message}). Using isolated mock adapter for testing.`
-      );
-      const mockResult = getMockOutfitRecommendation({
-        wardrobeItems: formattedWardrobe,
-        preferences,
-      });
-      const normalized = normalizeRecommendationResponse(mockResult.data);
-      return {
-        success: true,
-        isMock: true,
-        recommendations: normalized,
-      };
+    if (isNetworkError || serviceErr.message?.includes('HTTP')) {
+      console.warn(`[AI Recommendation] Rule-based service unreachable (${serviceErr.message}).`);
     }
-
-    // Map network errors to proper HTTP gateway status codes
-    if (err.name === 'TimeoutError' || err.name === 'AbortError') {
-      const timeoutError = new Error(
-        `AI recommendation request timed out after ${aiConfig.recommendationTimeoutMs}ms.`
-      );
-      timeoutError.statusCode = 504;
-      throw timeoutError;
-    }
-
-    if (isNetworkError) {
-      const serviceError = new Error(
-        `AI recommendation service is unavailable at ${aiConfig.recommendationServiceUrl}. Please ensure the Python recommendation service is running.`
-      );
-      serviceError.statusCode = 503;
-      throw serviceError;
-    }
-
-    throw err;
   }
+
+  // ── 3. Mock fallback ───────────────────────────────────────────────────────
+  if (aiConfig.recommendationMockFallback) {
+    console.warn('[AI Recommendation] All services unavailable. Using mock adapter.');
+    const mockResult = getMockOutfitRecommendation({ wardrobeItems: formattedWardrobe, preferences });
+    const normalized = normalizeRecommendationResponse(mockResult.data);
+    return { success: true, isMock: true, isGroq: false, recommendations: normalized };
+  }
+
+  const serviceError = new Error('All recommendation services are unavailable and mock fallback is disabled.');
+  serviceError.statusCode = 503;
+  throw serviceError;
 };
 
 export default {
