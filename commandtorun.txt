@@ -1,0 +1,9 @@
+cd ai_service
+node tests/test_recommender.js
+python tests/test_vision.py
+python -c "from vision.classifier import analyze_clothing_image; 
+
+
+main command: uvicorn api.app:app --reload --host 127.0.0.1 --port 8000
+
+http://127.0.0.1:8000

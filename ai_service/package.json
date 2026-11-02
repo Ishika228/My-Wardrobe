@@ -1,0 +1,19 @@
+{
+  "name": "wardrobewise-ai-service",
+  "version": "1.0.0",
+  "description": "WardrobeWise AI and Smart Outfit Recommendation Module (Member 3)",
+  "main": "recommender/recommender.js",
+  "scripts": {
+    "test": "node tests/test_recommender.js",
+    "test:recommender": "node tests/test_recommender.js"
+  },
+  "keywords": [
+    "ai",
+    "fashion",
+    "wardrobe",
+    "outfit-recommender",
+    "color-theory"
+  ],
+  "author": "Member 3 (AI Development)",
+  "license": "MIT"
+}

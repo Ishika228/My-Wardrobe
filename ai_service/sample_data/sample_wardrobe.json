@@ -1,0 +1,274 @@
+[
+  {
+    "item_id": "item_001",
+    "name": "Classic White Linen Shirt",
+    "category": "Shirt",
+    "category_group": "top",
+    "colour": {
+      "dominant": "White",
+      "dominant_hex": "#FFFFFF",
+      "secondary": null
+    },
+    "pattern": "Plain",
+    "seasons": ["Summer", "Spring"],
+    "occasions": ["Office", "College", "Casual outing", "Formal event"],
+    "times_worn": 12,
+    "last_worn": "2026-10-15T10:00:00Z",
+    "image_reference": "sample_data/images/white_shirt.jpg"
+  },
+  {
+    "item_id": "item_002",
+    "name": "Navy Blue Striped Crewneck T-Shirt",
+    "category": "T-shirt",
+    "category_group": "top",
+    "colour": {
+      "dominant": "Navy Blue",
+      "dominant_hex": "#1B2A4A",
+      "secondary": "White"
+    },
+    "pattern": "Striped",
+    "seasons": ["Summer", "Monsoon", "Spring"],
+    "occasions": ["Casual outing", "College", "Travel"],
+    "times_worn": 8,
+    "last_worn": "2026-10-20T14:30:00Z",
+    "image_reference": "sample_data/images/navy_striped_tshirt.jpg"
+  },
+  {
+    "item_id": "item_003",
+    "name": "Black Graphic Oversized T-Shirt",
+    "category": "T-shirt",
+    "category_group": "top",
+    "colour": {
+      "dominant": "Black",
+      "dominant_hex": "#111111",
+      "secondary": "Red"
+    },
+    "pattern": "Printed",
+    "seasons": ["Summer", "Monsoon", "Spring", "Winter"],
+    "occasions": ["College", "Casual outing", "Party"],
+    "times_worn": 15,
+    "last_worn": "2026-10-26T18:00:00Z",
+    "image_reference": "sample_data/images/black_graphic_tee.jpg"
+  },
+  {
+    "item_id": "item_004",
+    "name": "Burgundy Knit Turtleneck Sweater",
+    "category": "Sweater",
+    "category_group": "outerwear",
+    "colour": {
+      "dominant": "Red",
+      "dominant_hex": "#800020",
+      "secondary": null
+    },
+    "pattern": "Plain",
+    "seasons": ["Winter"],
+    "occasions": ["Office", "College", "Casual outing", "Formal event"],
+    "times_worn": 0,
+    "last_worn": null,
+    "image_reference": "sample_data/images/burgundy_sweater.jpg"
+  },
+  {
+    "item_id": "item_005",
+    "name": "Grey Pullover Hoodie",
+    "category": "Hoodie",
+    "category_group": "outerwear",
+    "colour": {
+      "dominant": "Grey",
+      "dominant_hex": "#808080",
+      "secondary": null
+    },
+    "pattern": "Plain",
+    "seasons": ["Winter", "Monsoon"],
+    "occasions": ["College", "Casual outing", "Travel"],
+    "times_worn": 14,
+    "last_worn": "2026-10-27T09:00:00Z",
+    "image_reference": "sample_data/images/grey_hoodie.jpg"
+  },
+  {
+    "item_id": "item_006",
+    "name": "Charcoal Tailored Suit Jacket",
+    "category": "Jacket",
+    "category_group": "outerwear",
+    "colour": {
+      "dominant": "Grey",
+      "dominant_hex": "#36454F",
+      "secondary": null
+    },
+    "pattern": "Plain",
+    "seasons": ["Winter", "Spring", "Monsoon"],
+    "occasions": ["Formal event", "Office", "Wedding"],
+    "times_worn": 1,
+    "last_worn": "2026-03-12T19:00:00Z",
+    "image_reference": "sample_data/images/charcoal_blazer.jpg"
+  },
+  {
+    "item_id": "item_007",
+    "name": "Dark Indigo Slim Fit Jeans",
+    "category": "Jeans",
+    "category_group": "bottom",
+    "colour": {
+      "dominant": "Blue",
+      "dominant_hex": "#1A2B4C",
+      "secondary": null
+    },
+    "pattern": "Plain",
+    "seasons": ["Summer", "Winter", "Monsoon", "Spring"],
+    "occasions": ["Casual outing", "College", "Travel", "Party"],
+    "times_worn": 22,
+    "last_worn": "2026-10-28T11:00:00Z",
+    "image_reference": "sample_data/images/indigo_jeans.jpg"
+  },
+  {
+    "item_id": "item_008",
+    "name": "Beige Slim Chinos Trousers",
+    "category": "Trousers",
+    "category_group": "bottom",
+    "colour": {
+      "dominant": "Beige",
+      "dominant_hex": "#F5F5DC",
+      "secondary": null
+    },
+    "pattern": "Plain",
+    "seasons": ["Summer", "Spring"],
+    "occasions": ["Office", "College", "Casual outing", "Formal event"],
+    "times_worn": 1,
+    "last_worn": "2026-04-10T11:00:00Z",
+    "image_reference": "sample_data/images/beige_chinos.jpg"
+  },
+  {
+    "item_id": "item_009",
+    "name": "Black Tailored Formal Trousers",
+    "category": "Trousers",
+    "category_group": "bottom",
+    "colour": {
+      "dominant": "Black",
+      "dominant_hex": "#000000",
+      "secondary": null
+    },
+    "pattern": "Plain",
+    "seasons": ["Summer", "Winter", "Monsoon", "Spring"],
+    "occasions": ["Office", "Formal event", "Wedding"],
+    "times_worn": 4,
+    "last_worn": "2026-08-14T15:00:00Z",
+    "image_reference": "sample_data/images/black_trousers.jpg"
+  },
+  {
+    "item_id": "item_010",
+    "name": "Olive Green Cotton Cargo Shorts",
+    "category": "Shorts",
+    "category_group": "bottom",
+    "colour": {
+      "dominant": "Green",
+      "dominant_hex": "#556B2F",
+      "secondary": null
+    },
+    "pattern": "Plain",
+    "seasons": ["Summer"],
+    "occasions": ["Casual outing", "Travel"],
+    "times_worn": 0,
+    "last_worn": null,
+    "image_reference": "sample_data/images/olive_shorts.jpg"
+  },
+  {
+    "item_id": "item_011",
+    "name": "Pleated A-Line Midi Skirt",
+    "category": "Skirt",
+    "category_group": "bottom",
+    "colour": {
+      "dominant": "Black",
+      "dominant_hex": "#1A1A1A",
+      "secondary": null
+    },
+    "pattern": "Plain",
+    "seasons": ["Summer", "Spring"],
+    "occasions": ["Office", "Casual outing", "Party"],
+    "times_worn": 2,
+    "last_worn": "2026-05-02T12:00:00Z",
+    "image_reference": "sample_data/images/black_skirt.jpg"
+  },
+  {
+    "item_id": "item_012",
+    "name": "Emerald Green Silk Evening Dress",
+    "category": "Dress",
+    "category_group": "dress",
+    "colour": {
+      "dominant": "Green",
+      "dominant_hex": "#046307",
+      "secondary": null
+    },
+    "pattern": "Plain",
+    "seasons": ["Summer", "Spring", "Winter"],
+    "occasions": ["Party", "Wedding", "Formal event"],
+    "times_worn": 1,
+    "last_worn": "2026-01-18T20:00:00Z",
+    "image_reference": "sample_data/images/emerald_dress.jpg"
+  },
+  {
+    "item_id": "item_013",
+    "name": "White Minimalist Leather Sneakers",
+    "category": "Sneakers",
+    "category_group": "footwear",
+    "colour": {
+      "dominant": "White",
+      "dominant_hex": "#F8F9FA",
+      "secondary": null
+    },
+    "pattern": "Plain",
+    "seasons": ["Summer", "Spring", "Monsoon", "Winter"],
+    "occasions": ["Casual outing", "College", "Travel"],
+    "times_worn": 25,
+    "last_worn": "2026-10-29T16:00:00Z",
+    "image_reference": "sample_data/images/white_sneakers.jpg"
+  },
+  {
+    "item_id": "item_014",
+    "name": "Brown Leather Oxford Shoes",
+    "category": "Shoes",
+    "category_group": "footwear",
+    "colour": {
+      "dominant": "Brown",
+      "dominant_hex": "#654321",
+      "secondary": null
+    },
+    "pattern": "Plain",
+    "seasons": ["Summer", "Winter", "Spring"],
+    "occasions": ["Formal event", "Office", "Wedding"],
+    "times_worn": 3,
+    "last_worn": "2026-08-14T15:00:00Z",
+    "image_reference": "sample_data/images/brown_oxfords.jpg"
+  },
+  {
+    "item_id": "item_015",
+    "name": "Black Leather Chelsea Boots",
+    "category": "Boots",
+    "category_group": "footwear",
+    "colour": {
+      "dominant": "Black",
+      "dominant_hex": "#0D0D0D",
+      "secondary": null
+    },
+    "pattern": "Plain",
+    "seasons": ["Winter", "Monsoon"],
+    "occasions": ["Casual outing", "College", "Party"],
+    "times_worn": 0,
+    "last_worn": null,
+    "image_reference": "sample_data/images/chelsea_boots.jpg"
+  },
+  {
+    "item_id": "item_016",
+    "name": "Tan Leather Belt & Classic Watch Set",
+    "category": "Accessories",
+    "category_group": "accessory",
+    "colour": {
+      "dominant": "Brown",
+      "dominant_hex": "#8B5A2B",
+      "secondary": "Gold"
+    },
+    "pattern": "Plain",
+    "seasons": ["Summer", "Winter", "Monsoon", "Spring"],
+    "occasions": ["Office", "Formal event", "Wedding", "College"],
+    "times_worn": 18,
+    "last_worn": "2026-10-28T08:00:00Z",
+    "image_reference": "sample_data/images/tan_belt.jpg"
+  }
+]
