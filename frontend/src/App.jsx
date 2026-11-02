@@ -412,15 +412,7 @@ export default function App() {
     });
   };
 
-  const handleGoToMirror = () => {
-    setAvatarPosition([-2.5, 0, 0.4]);
-    setAvatarRotation([0, -Math.PI * 0.65, 0]);
-    setCameraMode('mirror');
-    if (controlsRef.current) {
-      controlsRef.current.object.position.set(-1.0, 2.1, 2.2);
-      controlsRef.current.target.set(-2.5, 1.8, 0.4);
-    }
-  };
+
 
   // --- Handlers: Shopping Bag ---
   const handleAddToCart = (product) => {
@@ -784,16 +776,7 @@ export default function App() {
 
         {/* Right Controls */}
         <div className="topbar-actions">
-          <button
-            onClick={handleGoToMirror}
-            className={`topbar-pill-btn${cameraMode === 'mirror' ? ' active' : ''}`}
-            title="Mirror outfit check"
-          >
-            <Sparkles size={13} />
-            <span>Mirror Check</span>
-          </button>
-
-          <button
+<button
             onClick={toggleCameraMode}
             className={`topbar-pill-btn${cameraMode === 'follow' ? ' active' : ''}`}
             title="Toggle camera mode"
@@ -888,15 +871,7 @@ export default function App() {
           <Shirt size={18} />
           <span>Wardrobe</span>
         </button>
-        <button
-          className="dock-btn"
-          title="Mirror"
-          onClick={handleGoToMirror}
-        >
-          <Sparkles size={18} />
-          <span>Mirror</span>
-        </button>
-        <button
+<button
           className="dock-btn"
           title="AI Stylist"
           onClick={() => setIsStylistOpen(true)}
@@ -971,14 +946,7 @@ export default function App() {
           BOTTOM CENTER CONTROLS BAR
           ========================================================= */}
       <div className="bottom-bar">
-        <button
-          onClick={handleGoToMirror}
-          className={`bar-btn${cameraMode === 'mirror' ? ' active' : ''}`}
-        >
-          <Sparkles size={14} />
-          <span>Mirror</span>
-        </button>
-        <button
+<button
           onClick={toggleAutoRotate}
           className={`bar-btn${autoRotate ? ' active' : ''}`}
         >
