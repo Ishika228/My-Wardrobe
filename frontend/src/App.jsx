@@ -1,4 +1,4 @@
-import React, { useRef, useState, useMemo, Suspense } from 'react';
+import React, { useRef, useState, useMemo, Suspense, useEffect, useCallback } from 'react';
 import { Canvas } from '@react-three/fiber';
 import {
   Home,
@@ -29,7 +29,11 @@ import {
   Maximize2,
   Tv,
   Upload,
-  Camera
+  Camera,
+  LogIn,
+  LogOut,
+  User,
+  X
 } from 'lucide-react';
 import VRScene from './components/VRScene.jsx';
 import ProductDetailsModal from './components/ProductDetailsModal.jsx';
@@ -38,6 +42,15 @@ import WishlistDrawer from './components/WishlistDrawer.jsx';
 import StylistRecommendations from './components/StylistRecommendations.jsx';
 import { PRODUCTS, CATEGORIES, getRecommendations } from './data/products.js';
 import { analyzeClothingImage } from './services/aiService.js';
+import {
+  getAuthToken,
+  getSavedUser,
+  loginUser,
+  logoutUser,
+  getWardrobe,
+  addClothingItem,
+  uploadClothingImage
+} from './services/backendService.js';
 
 // Loading fallback for 3D canvas
 function LoadingScreen() {
@@ -104,6 +117,54 @@ export default function App() {
   const [uploadedClothes, setUploadedClothes] = useState([]);
   const [isUploadingCloth, setIsUploadingCloth] = useState(false);
   const fileInputRef = useRef(null);
+
+  // --- Backend Auth & Wardrobe State ---
+  const [authToken, setAuthToken]         = useState(() => getAuthToken());
+  const [currentUser, setCurrentUser]     = useState(() => getSavedUser());
+  const [backendWardrobe, setBackendWardrobe] = useState([]);
+  const [isLoadingWardrobe, setIsLoadingWardrobe] = useState(false);
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [loginEmail, setLoginEmail]       = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [loginError, setLoginError]       = useState('');
+  const [isLoggingIn, setIsLoggingIn]     = useState(false);
+
+  // Fetch backend wardrobe whenever token changes
+  useEffect(() => {
+    if (!authToken) { setBackendWardrobe([]); return; }
+    setIsLoadingWardrobe(true);
+    getWardrobe(authToken)
+      .then((items) => setBackendWardrobe(items))
+      .catch(() => setBackendWardrobe([]))
+      .finally(() => setIsLoadingWardrobe(false));
+  }, [authToken]);
+
+  // Login handler
+  const handleLogin = useCallback(async (e) => {
+    e?.preventDefault();
+    setLoginError('');
+    setIsLoggingIn(true);
+    try {
+      const data = await loginUser(loginEmail, loginPassword);
+      setAuthToken(data.token);
+      setCurrentUser(data.user);
+      setShowLoginModal(false);
+      setLoginEmail('');
+      setLoginPassword('');
+    } catch (err) {
+      setLoginError(err.message);
+    } finally {
+      setIsLoggingIn(false);
+    }
+  }, [loginEmail, loginPassword]);
+
+  // Logout handler
+  const handleLogout = useCallback(() => {
+    logoutUser();
+    setAuthToken(null);
+    setCurrentUser(null);
+    setBackendWardrobe([]);
+  }, []);
 
   // --- Handlers: Virtual Try-On ---
   const handleTryOn = (product) => {
@@ -384,12 +445,37 @@ export default function App() {
     handleTryOn(newClothItem);
     setIsUploadingCloth(false);
 
+    // Also save to backend if logged in (fire-and-forget, non-blocking)
+    if (authToken) {
+      addClothingItem(authToken, {
+        name:        newClothItem.name,
+        category:    detectedCategory,
+        color:       detectedColor,
+        brand:       'My Closet',
+        description: newClothItem.description,
+        size:        'M',
+        tags:        detectedTags
+      }).then((savedItem) => {
+        if (savedItem?.backendId) {
+          // Upload the actual image file to backend
+          uploadClothingImage(authToken, savedItem.backendId, file)
+            .then((updatedItem) => {
+              if (updatedItem) {
+                setBackendWardrobe((prev) => [updatedItem, ...prev.filter(i => i.backendId !== updatedItem.backendId)]);
+              }
+            })
+            .catch(() => {});
+        }
+      }).catch(() => {});
+    }
+
     if (e.target) e.target.value = '';
   };
 
   // Filtered Products for Right Wardrobe Sidebar
   const displayedCatalog = useMemo(() => {
-    let items = [...uploadedClothes, ...PRODUCTS];
+    // Merge: uploaded first, then backend wardrobe, then static products
+    let items = [...uploadedClothes, ...backendWardrobe, ...PRODUCTS];
     if (activeCategory !== 'all') {
       const cat = activeCategory.toLowerCase();
       items = items.filter((p) => {
@@ -409,7 +495,7 @@ export default function App() {
       if (matched.length > 0) items = matched;
     }
     return items;
-  }, [activeCategory, activeOccasion, uploadedClothes]);
+  }, [activeCategory, activeOccasion, uploadedClothes, backendWardrobe]);
 
   return (
     <div className="app-root">
@@ -535,15 +621,30 @@ export default function App() {
             )}
           </button>
 
-          <div className="profile-pill">
-            <img
-              src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80"
-              alt="Style Queen"
-              className="profile-avatar"
-            />
-            <span className="profile-name">Hi, Style Queen</span>
-            <ChevronDown size={13} />
-          </div>
+          {currentUser ? (
+            <div className="profile-pill" style={{ cursor: 'pointer' }} onClick={handleLogout} title="Click to sign out">
+              <div className="profile-avatar" style={{
+                width: 28, height: 28, borderRadius: '50%',
+                background: 'linear-gradient(135deg,#9e7bb5,#e879a0)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 12, fontWeight: 700, color: '#fff', flexShrink: 0
+              }}>
+                {(currentUser.name || currentUser.email || 'U')[0].toUpperCase()}
+              </div>
+              <span className="profile-name">Hi, {(currentUser.name || currentUser.email || '').split(' ')[0]}</span>
+              <LogOut size={13} style={{ opacity: 0.7 }} />
+            </div>
+          ) : (
+            <button
+              className="topbar-pill-btn"
+              onClick={() => setShowLoginModal(true)}
+              title="Sign in to sync your wardrobe"
+              style={{ background: 'rgba(158,123,181,0.25)', borderColor: 'rgba(158,123,181,0.5)' }}
+            >
+              <LogIn size={13} />
+              <span>Sign In</span>
+            </button>
+          )}
         </div>
       </header>
 
@@ -691,6 +792,39 @@ export default function App() {
           RIGHT FLOATING WARDROBE PANEL
           ========================================================= */}
       <aside className="wardrobe-panel">
+
+        {/* Auth Status Banner */}
+        {!currentUser ? (
+          <div
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              padding: '8px 12px', borderRadius: 10, marginBottom: 14,
+              background: 'rgba(158,123,181,0.12)', border: '1px solid rgba(158,123,181,0.25)',
+              cursor: 'pointer'
+            }}
+            onClick={() => setShowLoginModal(true)}
+          >
+            <LogIn size={13} style={{ color: '#9e7bb5', flexShrink: 0 }} />
+            <span style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.65)', lineHeight: 1.4 }}>
+              <strong style={{ color: '#c4a8e0' }}>Sign in</strong> to sync your wardrobe &amp; save outfits
+            </span>
+          </div>
+        ) : (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            padding: '7px 12px', borderRadius: 10, marginBottom: 14,
+            background: 'rgba(52,211,153,0.08)', border: '1px solid rgba(52,211,153,0.2)'
+          }}>
+            <div style={{
+              width: 7, height: 7, borderRadius: '50%',
+              background: '#34d399', flexShrink: 0
+            }} />
+            <span style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.65)' }}>
+              Wardrobe synced · <strong style={{ color: '#86efac' }}>{backendWardrobe.length} saved {backendWardrobe.length === 1 ? 'item' : 'items'}</strong>
+              {isLoadingWardrobe && ' (loading…)'}
+            </span>
+          </div>
+        )}
 
         {/* Clothing Categories */}
         <div>
@@ -922,6 +1056,110 @@ export default function App() {
         onTryFullOutfit={handleTryFullOutfit}
         onAddToCart={handleAddToCart}
       />
+
+      {/* =========================================================
+          LOGIN MODAL
+          ========================================================= */}
+      {showLoginModal && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, zIndex: 9999,
+            background: 'rgba(10,8,18,0.85)', backdropFilter: 'blur(12px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center'
+          }}
+          onClick={(e) => { if (e.target === e.currentTarget) setShowLoginModal(false); }}
+        >
+          <div style={{
+            background: 'linear-gradient(135deg,rgba(30,20,50,0.98),rgba(20,16,38,0.98))',
+            border: '1px solid rgba(158,123,181,0.35)',
+            borderRadius: 20, padding: '36px 32px', width: 340,
+            boxShadow: '0 24px 64px rgba(0,0,0,0.7)'
+          }}>
+            {/* Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+              <div>
+                <h2 style={{ color: '#fff', fontSize: 18, fontWeight: 700, margin: 0 }}>Sign In</h2>
+                <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, margin: '4px 0 0' }}>Sync your wardrobe across sessions</p>
+              </div>
+              <button
+                onClick={() => setShowLoginModal(false)}
+                style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', padding: 4 }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Form */}
+            <form onSubmit={handleLogin}>
+              <div style={{ marginBottom: 14 }}>
+                <label style={{ display: 'block', color: 'rgba(255,255,255,0.7)', fontSize: 12, marginBottom: 6, fontWeight: 600 }}>
+                  Email
+                </label>
+                <input
+                  type="email"
+                  value={loginEmail}
+                  onChange={(e) => setLoginEmail(e.target.value)}
+                  placeholder="user@wardrobewise.com"
+                  required
+                  style={{
+                    width: '100%', padding: '10px 14px', borderRadius: 10,
+                    background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.15)',
+                    color: '#fff', fontSize: 13, outline: 'none', boxSizing: 'border-box',
+                    fontFamily: 'inherit'
+                  }}
+                />
+              </div>
+              <div style={{ marginBottom: 20 }}>
+                <label style={{ display: 'block', color: 'rgba(255,255,255,0.7)', fontSize: 12, marginBottom: 6, fontWeight: 600 }}>
+                  Password
+                </label>
+                <input
+                  type="password"
+                  value={loginPassword}
+                  onChange={(e) => setLoginPassword(e.target.value)}
+                  placeholder="••••••••"
+                  required
+                  style={{
+                    width: '100%', padding: '10px 14px', borderRadius: 10,
+                    background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.15)',
+                    color: '#fff', fontSize: 13, outline: 'none', boxSizing: 'border-box',
+                    fontFamily: 'inherit'
+                  }}
+                />
+              </div>
+
+              {loginError && (
+                <p style={{
+                  color: '#f87171', fontSize: 12, marginBottom: 14,
+                  padding: '8px 12px', background: 'rgba(248,113,113,0.1)',
+                  borderRadius: 8, border: '1px solid rgba(248,113,113,0.2)'
+                }}>
+                  {loginError}
+                </p>
+              )}
+
+              <button
+                type="submit"
+                disabled={isLoggingIn}
+                style={{
+                  width: '100%', padding: '12px', borderRadius: 12,
+                  background: 'linear-gradient(135deg,#9e7bb5,#e879a0)',
+                  border: 'none', color: '#fff', fontSize: 14, fontWeight: 700,
+                  cursor: isLoggingIn ? 'not-allowed' : 'pointer',
+                  opacity: isLoggingIn ? 0.7 : 1, fontFamily: 'inherit',
+                  letterSpacing: '0.3px'
+                }}
+              >
+                {isLoggingIn ? 'Signing in…' : 'Sign In'}
+              </button>
+
+              <p style={{ textAlign: 'center', color: 'rgba(255,255,255,0.4)', fontSize: 11, marginTop: 16 }}>
+                Demo: user@wardrobewise.com · Password123!
+              </p>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
