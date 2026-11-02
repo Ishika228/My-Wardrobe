@@ -14,10 +14,10 @@ function FloatingParticles({ count = 75 }) {
     const pos = new Float32Array(count * 3);
     const sca = new Float32Array(count);
     for (let i = 0; i < count; i++) {
-      pos[i * 3]     = (Math.random() - 0.5) * 12;
+      pos[i * 3] = (Math.random() - 0.5) * 12;
       pos[i * 3 + 1] = Math.random() * 4.5 + 0.5;
       pos[i * 3 + 2] = (Math.random() - 0.5) * 8;
-      sca[i]         = Math.random() * 0.7 + 0.3;
+      sca[i] = Math.random() * 0.7 + 0.3;
     }
     return [pos, sca];
   }, [count]);

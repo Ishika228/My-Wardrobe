@@ -761,6 +761,7 @@ export default function App() {
         onSelectProduct={(p) => setSelectedProduct(p)}
         onTryOn={handleTryOn}
         onTryFullOutfit={handleTryFullOutfit}
+        onAddToCart={handleAddToCart}
       />
     </div>
   );

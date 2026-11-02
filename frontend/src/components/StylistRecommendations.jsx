@@ -1,6 +1,28 @@
-import React, { useMemo } from 'react';
-import { Sparkles, ArrowRight, X, Heart, Plus, Check } from 'lucide-react';
-import { PRODUCTS, getRecommendations } from '../data/products.js';
+import React, { useState, useEffect } from 'react';
+import {
+  Sparkles,
+  X,
+  ShoppingBag,
+  RotateCcw,
+  Check
+} from 'lucide-react';
+import {
+  getAIOutfitSuggestions,
+  getAIRefreshRevival,
+  checkAIServiceHealth
+} from '../services/aiService.js';
+
+const OCCASIONS = [
+  'Casual outing',
+  'Office',
+  'Party',
+  'College',
+  'Travel',
+  'Formal event',
+  'Wedding'
+];
+
+const SEASONS = ['Summer', 'Spring', 'Winter', 'Monsoon'];
 
 export default function StylistRecommendations({
   isOpen,
@@ -9,44 +31,88 @@ export default function StylistRecommendations({
   selectedProduct,
   onSelectProduct,
   onTryOn,
-  onTryFullOutfit
+  onTryFullOutfit,
+  onAddToCart
 }) {
+  const [activeTab, setActiveTab] = useState('smart'); // 'smart' | 'revival'
+  const [selectedOccasion, setSelectedOccasion] = useState('Casual outing');
+  const [selectedSeason, setSelectedSeason] = useState('Summer');
+  const [outfits, setOutfits] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [aiStatus, setAiStatus] = useState({ online: false, engine: 'checking' });
+  const [appliedOutfitId, setAppliedOutfitId] = useState(null);
+  const [addedOutfitId, setAddedOutfitId] = useState(null);
+
+  // Check backend health on drawer open
+  useEffect(() => {
+    if (!isOpen) return;
+    checkAIServiceHealth().then((res) => {
+      setAiStatus({
+        online: res.online,
+        engine: res.online ? 'FastAPI Microservice (Port 8000)' : 'Client AI Recommender'
+      });
+    });
+  }, [isOpen]);
+
+  // Query AI Service whenever filters or tab changes
+  useEffect(() => {
+    if (!isOpen) return;
+    setLoading(true);
+
+    if (activeTab === 'smart') {
+      getAIOutfitSuggestions({
+        occasion: selectedOccasion,
+        season: selectedSeason,
+        limit: 4,
+        focalProduct: selectedProduct
+      })
+        .then((res) => {
+          setOutfits(res.recommended_outfits || []);
+        })
+        .catch((err) => {
+          console.error('Error fetching AI recommendations:', err);
+        })
+        .finally(() => setLoading(false));
+    } else {
+      getAIRefreshRevival({ limit: 4 })
+        .then((res) => {
+          setOutfits(res.revival_outfits || []);
+        })
+        .catch((err) => {
+          console.error('Error fetching revival recommendations:', err);
+        })
+        .finally(() => setLoading(false));
+    }
+  }, [isOpen, activeTab, selectedOccasion, selectedSeason, selectedProduct]);
+
   if (!isOpen) return null;
 
-  // Determine complementary recommendations based on active outfit or selected product
-  const focalItem = selectedProduct || currentOutfit?.dress || currentOutfit?.top || PRODUCTS[0];
+  const handleApplyOutfit = (outfit) => {
+    setAppliedOutfitId(outfit.outfit_id);
+    const originalItems = outfit.items.map((i) => i.originalProduct || i);
 
-  // Retrieve intelligent recommendations using the repository function
-  const recommendations = useMemo(() => {
-    return getRecommendations(focalItem.id, 5);
-  }, [focalItem]);
-
-  // Compute a complete look
-  const completeLook = useMemo(() => {
-    const lookItems = [];
-    if (focalItem.category === 'dresses') {
-      lookItems.push(focalItem);
-      const heels = PRODUCTS.find((p) => p.category === 'shoes' && p.silhouette === 'stilettos') || PRODUCTS[7];
-      const bag = PRODUCTS.find((p) => p.category === 'accessories') || PRODUCTS[9];
-      const coat = PRODUCTS.find((p) => p.category === 'outerwear') || PRODUCTS[4];
-      lookItems.push(coat, heels, bag);
-    } else {
-      const top = focalItem.category === 'tops' ? focalItem : PRODUCTS[0];
-      const bottom = focalItem.category === 'trousers' || focalItem.category === 'skirts' ? focalItem : PRODUCTS[5];
-      const shoes = PRODUCTS.find((p) => p.category === 'shoes') || PRODUCTS[7];
-      const bag = PRODUCTS.find((p) => p.category === 'accessories') || PRODUCTS[9];
-      lookItems.push(top, bottom, shoes, bag);
-    }
-    return lookItems;
-  }, [focalItem]);
-
-  const handleApplyFullLook = () => {
     if (onTryFullOutfit) {
-      onTryFullOutfit(completeLook);
-    } else {
-      completeLook.forEach((item) => onTryOn(item));
+      onTryFullOutfit(originalItems);
+    } else if (onTryOn) {
+      originalItems.forEach((it) => onTryOn(it));
     }
-    onClose();
+
+    setTimeout(() => {
+      setAppliedOutfitId(null);
+    }, 2000);
+  };
+
+  const handleAddOutfitToBag = (outfit) => {
+    setAddedOutfitId(outfit.outfit_id);
+    const originalItems = outfit.items.map((i) => i.originalProduct || i);
+
+    if (onAddToCart) {
+      originalItems.forEach((it) => onAddToCart(it));
+    }
+
+    setTimeout(() => {
+      setAddedOutfitId(null);
+    }, 2200);
   };
 
   return (
@@ -55,98 +121,175 @@ export default function StylistRecommendations({
         {/* Header */}
         <div className="drawer-header">
           <div className="drawer-title-row">
-            <Sparkles size={20} className="text-purple-400 animate-spin-slow" />
-            <h2 className="drawer-title">AI Personal Stylist</h2>
+            <Sparkles size={20} className="text-purple-400" />
+            <h2 className="drawer-title">AI Outfit Suggestions</h2>
           </div>
-          <button className="drawer-close-btn" onClick={onClose} aria-label="Close recommendations">
+          <button className="drawer-close-btn" onClick={onClose} aria-label="Close suggestions">
             <X size={18} />
           </button>
         </div>
 
-        {/* Stylist Introduction Banner */}
-        <div className="stylist-intro-card">
-          <div className="stylist-avatar-mini">✨</div>
-          <div className="stylist-intro-text">
-            <span className="stylist-badge">Style Analysis for "{focalItem.name}"</span>
-            <p className="stylist-quote">
-              "We've analyzed your avatar's silhouette and coordinated high-texture tonal pieces for an effortless, modern luxury aesthetic."
-            </p>
+        {/* AI Service Live Status Bar */}
+        <div className="ai-status-banner">
+          <div className="ai-status-indicator">
+            <span className={`ai-status-dot ${aiStatus.online ? 'online' : 'offline'}`} />
+            <span>AI Service: {aiStatus.engine}</span>
           </div>
+          <span className="ai-status-badge">
+            {aiStatus.online ? 'Microservice Active' : 'Offline Safe Mode'}
+          </span>
         </div>
 
-        {/* 1-Click Complete Look Showcase */}
-        <div className="complete-look-banner">
-          <div className="flex justify-between items-center mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider text-purple-300">
-              Curated Complete Ensemble
-            </span>
-            <span className="text-[11px] font-semibold text-emerald-400">99% Match Score</span>
-          </div>
-
-          <div className="flex gap-2 mb-3 overflow-x-auto pb-1">
-            {completeLook.map((item) => (
-              <img
-                key={item.id}
-                src={item.image}
-                alt={item.name}
-                title={`${item.name} ($${item.price})`}
-                className="w-14 h-16 rounded-lg object-cover border border-white/10 shrink-0"
-              />
-            ))}
-          </div>
-
+        {/* Mode Tabs: Smart Recommendations vs Sustainable Revival */}
+        <div className="ai-tabs-container">
           <button
-            onClick={handleApplyFullLook}
-            className="w-full h-9 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white text-xs font-semibold flex items-center justify-center gap-2 shadow-lg shadow-purple-900/40 transition-all"
+            onClick={() => setActiveTab('smart')}
+            className={`ai-tab-button ${activeTab === 'smart' ? 'active' : ''}`}
           >
             <Sparkles size={14} />
-            <span>Try On Full Curated Look (3D)</span>
+            <span>Smart Outfits</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('revival')}
+            className={`ai-tab-button ${activeTab === 'revival' ? 'active revival' : ''}`}
+          >
+            <RotateCcw size={14} />
+            <span>Revive Forgotten Clothes</span>
           </button>
         </div>
 
-        {/* Individual Item Recommendations List */}
-        <div className="recommendations-list">
-          <h4 className="text-xs font-bold uppercase tracking-wider text-purple-200/80 mb-1 px-1">
-            Complementary Wardrobe Pieces
-          </h4>
-
-          {recommendations.map((item) => (
-            <div key={item.id} className="recommendation-card">
-              <img src={item.image} alt={item.name} className="rec-image" />
-              <div className="rec-details">
-                <span className="rec-category">{item.category.toUpperCase()}</span>
-                <h4 className="rec-title">{item.name}</h4>
-                <div className="rec-price-row">
-                  <span className="rec-price">${item.price}</span>
-                  <span className="rec-match-score">98% Match</span>
-                </div>
-
-                <div className="rec-actions">
+        {/* Filter Controls (Occasion & Season) */}
+        {activeTab === 'smart' && (
+          <div className="ai-filter-box">
+            {/* Occasions */}
+            <div style={{ marginBottom: '10px' }}>
+              <span className="ai-filter-label">Occasion Context</span>
+              <div className="ai-pill-row">
+                {OCCASIONS.map((occ) => (
                   <button
-                    onClick={() => {
-                      onTryOn(item);
-                      onClose();
-                    }}
-                    className="rec-try-btn"
+                    key={occ}
+                    onClick={() => setSelectedOccasion(occ)}
+                    className={`ai-context-pill ${selectedOccasion === occ ? 'active' : ''}`}
                   >
-                    <Sparkles size={13} />
-                    <span>Try On (3D)</span>
+                    {occ}
                   </button>
-
-                  <button
-                    onClick={() => {
-                      onSelectProduct(item);
-                      onClose();
-                    }}
-                    className="rec-view-btn"
-                  >
-                    <span>Inspect</span>
-                    <ArrowRight size={13} />
-                  </button>
-                </div>
+                ))}
               </div>
             </div>
-          ))}
+
+            {/* Seasons */}
+            <div>
+              <span className="ai-filter-label">Season</span>
+              <div className="ai-seasons-grid">
+                {SEASONS.map((sea) => (
+                  <button
+                    key={sea}
+                    onClick={() => setSelectedSeason(sea)}
+                    className={`ai-season-btn ${selectedSeason === sea ? 'active' : ''}`}
+                  >
+                    {sea}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Recommendations List */}
+        <div className="ai-outfits-scroll">
+          {loading ? (
+            <div className="ai-loading-container">
+              <div className="ai-loading-spinner" />
+              <p className="ai-loading-text">
+                AI Recommender evaluating color harmony & occasion rules…
+              </p>
+            </div>
+          ) : outfits.length === 0 ? (
+            <div style={{ padding: '40px 0', textAlign: 'center', fontSize: '13px', color: '#9ca3af' }}>
+              <p>No outfits matched your exact filter combination.</p>
+              <button
+                onClick={() => {
+                  setSelectedOccasion('Casual outing');
+                  setSelectedSeason('Summer');
+                }}
+                className="ai-try-all-btn"
+                style={{ maxWidth: '200px', margin: '14px auto 0' }}
+              >
+                Reset to Default Casual
+              </button>
+            </div>
+          ) : (
+            outfits.map((outfit, index) => {
+              const isApplied = appliedOutfitId === outfit.outfit_id;
+              const isAdded = addedOutfitId === outfit.outfit_id;
+              const totalPrice = outfit.items.reduce((sum, item) => sum + (item.price || 95), 0);
+
+              return (
+                <div key={outfit.outfit_id || index} className="ai-outfit-card">
+                  {/* Top Bar: Outfit Title & Score */}
+                  <div className="ai-outfit-header">
+                    <div className="ai-outfit-title-group">
+                      <span className="ai-outfit-title">Curated Look #{index + 1}</span>
+                      <span className="ai-type-pill">
+                        {outfit.type?.replace(/_/g, ' ') || 'Complete Outfit'}
+                      </span>
+                    </div>
+
+                    <div className="ai-match-pill">
+                      <Sparkles size={11} />
+                      <span>{outfit.recommendation_score || 98}% Match</span>
+                    </div>
+                  </div>
+
+                  {/* Horizontal Item Thumbnails Row (Fixed 3-col grid with 120px height) */}
+                  <div className="ai-thumbnails-grid">
+                    {outfit.items.map((item, itemIdx) => (
+                      <div key={item.item_id || itemIdx} className="ai-thumb-box">
+                        <img
+                          src={item.image || item.image_reference}
+                          alt={item.name}
+                          className="ai-thumb-img"
+                        />
+                        <div className="ai-thumb-overlay">
+                          <p className="ai-thumb-title">{item.name}</p>
+                          <span className="ai-thumb-price">${item.price || 95}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* AI Explanation / Fashion Rationale from Recommender Engine */}
+                  {outfit.explanation && (
+                    <div className="ai-explanation-box">
+                      <span className="ai-explanation-tag">✦ AI Stylist:</span>
+                      <span>{outfit.explanation}</span>
+                    </div>
+                  )}
+
+                  {/* Action Buttons: Try On (3D) + Add Look to Bag */}
+                  <div className="ai-action-row">
+                    <button
+                      onClick={() => handleApplyOutfit(outfit)}
+                      className={`ai-try-all-btn ${isApplied ? 'applied' : ''}`}
+                    >
+                      {isApplied ? <Check size={14} /> : <Sparkles size={14} />}
+                      <span>{isApplied ? 'Wearing on Avatar ✓' : 'Try On Full Look (3D)'}</span>
+                    </button>
+
+                    <button
+                      onClick={() => handleAddOutfitToBag(outfit)}
+                      className={`ai-add-bag-btn ${isAdded ? 'added' : ''}`}
+                      title="Add entire outfit to shopping bag"
+                    >
+                      <ShoppingBag size={14} />
+                      <span>{isAdded ? 'Added ✓' : `$${totalPrice}`}</span>
+                    </button>
+                  </div>
+                </div>
+              );
+            })
+          )}
         </div>
       </aside>
     </div>

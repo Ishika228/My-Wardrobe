@@ -44,7 +44,7 @@ export const PRODUCTS = [
     silhouette: 'crop-tank',
     position3D: [-2.2, 2.1, -1.8], // 3D coordinates in boutique
     complementaryIds: ['trouser-1', 'shoe-1', 'acc-1', 'out-1'],
-    image: 'https://images.unsplash.com/photo-1503342217505-b0a15ec3261c?w=400&auto=format&fit=crop&q=80'
+    image: 'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=400&auto=format&fit=crop&q=80'
   },
   {
     id: 'top-2',
