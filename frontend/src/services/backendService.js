@@ -57,6 +57,23 @@ export async function checkBackendHealth() {
   }
 }
 
+// ─── Auto-Auth Helper ──────────────────────────────────────────────────────────
+/**
+ * Ensures a valid JWT token exists.
+ * If not signed in or token expired, auto-authenticates with the default seeded account.
+ */
+export async function ensureAuth() {
+  let token = getAuthToken();
+  if (token) return token;
+  try {
+    const data = await loginUser('user@wardrobewise.com', 'Password123!');
+    return data.token;
+  } catch (err) {
+    console.warn('[backendService] auto-login failed:', err.message);
+    return null;
+  }
+}
+
 // ─── Auth ──────────────────────────────────────────────────────────────────────
 /**
  * Login with email + password. Returns { token, user } on success.
@@ -182,18 +199,34 @@ function backendItemToProduct(item) {
  * Returns an array of frontend-schema product objects.
  */
 export async function getWardrobe(token) {
-  if (!token) return [];
+  let authToken = token || (await ensureAuth());
+  if (!authToken) return [];
   try {
-    const res = await fetch(`${BACKEND_URL}/api/clothes?limit=50`, {
+    let res = await fetch(`${BACKEND_URL}/api/clothes?limit=100`, {
       headers: {
-        'Authorization': `Bearer ${token}`,
+        'Authorization': `Bearer ${authToken}`,
         'Content-Type':  'application/json'
       },
-      signal: AbortSignal.timeout(5000)
+      signal: AbortSignal.timeout(6000)
     });
+
+    // If token expired, auto re-login once
+    if (res.status === 401) {
+      clearAuthToken();
+      authToken = await ensureAuth();
+      if (!authToken) return [];
+      res = await fetch(`${BACKEND_URL}/api/clothes?limit=100`, {
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+          'Content-Type':  'application/json'
+        },
+        signal: AbortSignal.timeout(6000)
+      });
+    }
+
     if (!res.ok) return [];
     const data = await res.json();
-    const items = data.data || data.clothingItems || [];
+    const items = Array.isArray(data.data) ? data.data : (data.clothingItems || []);
     return items.map(backendItemToProduct);
   } catch (err) {
     console.warn('[backendService] getWardrobe failed:', err.message);
@@ -206,7 +239,8 @@ export async function getWardrobe(token) {
  * Returns the created item's ID and the mapped frontend product.
  */
 export async function addClothingItem(token, { name, category, color, brand, description, size, tags }) {
-  if (!token) throw new Error('Not logged in');
+  let authToken = token || (await ensureAuth());
+  if (!authToken) throw new Error('Not logged in and could not auto-authenticate');
 
   // Map frontend category to backend category
   const backendCatMap = {
@@ -221,7 +255,7 @@ export async function addClothingItem(token, { name, category, color, brand, des
   const res = await fetch(`${BACKEND_URL}/api/clothes`, {
     method:  'POST',
     headers: {
-      'Authorization': `Bearer ${token}`,
+      'Authorization': `Bearer ${authToken}`,
       'Content-Type':  'application/json'
     },
     body: JSON.stringify({
@@ -248,13 +282,14 @@ export async function addClothingItem(token, { name, category, color, brand, des
  * Returns the updated product object with the backend imageUrl set.
  */
 export async function uploadClothingImage(token, clothingId, file) {
-  if (!token || !clothingId) return null;
+  let authToken = token || (await ensureAuth());
+  if (!authToken || !clothingId) return null;
   try {
     const formData = new FormData();
     formData.append('image', file);
     const res = await fetch(`${BACKEND_URL}/api/clothes/${clothingId}/image`, {
       method:  'POST',
-      headers: { 'Authorization': `Bearer ${token}` },
+      headers: { 'Authorization': `Bearer ${authToken}` },
       body:    formData
     });
     if (!res.ok) return null;
@@ -271,11 +306,12 @@ export async function uploadClothingImage(token, clothingId, file) {
  * Trigger AI analysis on a stored clothing item.
  */
 export async function analyzeStoredItem(token, clothingId) {
-  if (!token || !clothingId) return null;
+  let authToken = token || (await ensureAuth());
+  if (!authToken || !clothingId) return null;
   try {
     const res = await fetch(`${BACKEND_URL}/api/clothes/${clothingId}/analyze`, {
       method:  'POST',
-      headers: { 'Authorization': `Bearer ${token}` }
+      headers: { 'Authorization': `Bearer ${authToken}` }
     });
     if (!res.ok) return null;
     return await res.json();
@@ -288,11 +324,12 @@ export async function analyzeStoredItem(token, clothingId) {
  * Delete a clothing item from the backend wardrobe.
  */
 export async function deleteClothingItem(token, clothingId) {
-  if (!token || !clothingId) return false;
+  let authToken = token || (await ensureAuth());
+  if (!authToken || !clothingId) return false;
   try {
     const res = await fetch(`${BACKEND_URL}/api/clothes/${clothingId}`, {
       method:  'DELETE',
-      headers: { 'Authorization': `Bearer ${token}` }
+      headers: { 'Authorization': `Bearer ${authToken}` }
     });
     return res.ok;
   } catch {
