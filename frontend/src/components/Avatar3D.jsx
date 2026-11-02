@@ -219,6 +219,7 @@ export default function Avatar3D({
   const shoeLeftRef = useRef();
   const shoeRightRef = useRef();
   const dressMeshRef = useRef();
+  const pelvisJeansRef = useRef();
 
   // Skeletal FK Joint Refs
   const pelvisRef = useRef();
@@ -312,50 +313,70 @@ export default function Avatar3D({
 
   // Handle Wardrobe Virtual Try-On updates while preserving signature look by default
   useEffect(() => {
-    // 1. Dress override
+    // 1. Dress override (replaces top and bottom completely)
     if (outfit?.dress) {
       const dressMat = createGarmentPBRMaterial(outfit.dress, 'satin');
       if (dressMeshRef.current) {
-        dressMeshRef.current.material = dressMat;
         dressMeshRef.current.visible = true;
+        dressMeshRef.current.traverse((child) => {
+          if (child.isMesh) child.material = dressMat;
+        });
       }
+      if (pelvisJeansRef.current) pelvisJeansRef.current.visible = false;
       if (vestMeshRef.current) vestMeshRef.current.visible = false;
+      if (shirtMeshRef.current) shirtMeshRef.current.visible = false;
       if (pantsLeftThighRef.current) pantsLeftThighRef.current.visible = false;
       if (pantsRightThighRef.current) pantsRightThighRef.current.visible = false;
+      if (pantsLeftCalfRef.current) pantsLeftCalfRef.current.visible = false;
+      if (pantsRightCalfRef.current) pantsRightCalfRef.current.visible = false;
     } else {
       if (dressMeshRef.current) dressMeshRef.current.visible = false;
+      if (pelvisJeansRef.current) pelvisJeansRef.current.visible = true;
+      if (shirtMeshRef.current) shirtMeshRef.current.visible = true;
       if (pantsLeftThighRef.current) pantsLeftThighRef.current.visible = true;
       if (pantsRightThighRef.current) pantsRightThighRef.current.visible = true;
+      if (pantsLeftCalfRef.current) pantsLeftCalfRef.current.visible = true;
+      if (pantsRightCalfRef.current) pantsRightCalfRef.current.visible = true;
 
       // Custom top try-on
-      if (outfit?.top && outfit.top.id !== 'top-1') {
+      if (outfit?.top) {
         const topMat = createGarmentPBRMaterial(outfit.top, 'ribbed');
         if (vestMeshRef.current) {
-          vestMeshRef.current.material = topMat;
           vestMeshRef.current.visible = true;
+          vestMeshRef.current.traverse((child) => {
+            if (child.isMesh) child.material = topMat;
+          });
         }
       } else {
         if (vestMeshRef.current) {
-          vestMeshRef.current.material = materials.maroonVest;
           vestMeshRef.current.visible = true;
+          vestMeshRef.current.traverse((child) => {
+            if (child.isMesh) child.material = materials.maroonVest;
+          });
         }
       }
 
       // Custom bottom try-on
-      if (outfit?.bottom && outfit.bottom.id !== 'trouser-1') {
+      if (outfit?.bottom) {
         const bottomMat = createGarmentPBRMaterial(outfit.bottom, 'denim');
-        [pantsLeftThighRef, pantsRightThighRef, pantsLeftCalfRef, pantsRightCalfRef].forEach(ref => {
+        [pantsLeftThighRef, pantsRightThighRef, pantsLeftCalfRef, pantsRightCalfRef].forEach((ref) => {
           if (ref.current) ref.current.material = bottomMat;
         });
+        if (pelvisJeansRef.current && pelvisJeansRef.current.children[0]) {
+          pelvisJeansRef.current.children[0].material = bottomMat;
+        }
       } else {
-        [pantsLeftThighRef, pantsRightThighRef, pantsLeftCalfRef, pantsRightCalfRef].forEach(ref => {
+        [pantsLeftThighRef, pantsRightThighRef, pantsLeftCalfRef, pantsRightCalfRef].forEach((ref) => {
           if (ref.current) ref.current.material = materials.navyJeans;
         });
+        if (pelvisJeansRef.current && pelvisJeansRef.current.children[0]) {
+          pelvisJeansRef.current.children[0].material = materials.navyJeans;
+        }
       }
     }
 
     // Both shoes try-on
-    if (outfit?.shoes && outfit.shoes.id !== 'shoe-1') {
+    if (outfit?.shoes) {
       const shoeMat = createGarmentPBRMaterial(outfit.shoes, 'sneaker');
       if (shoeLeftRef.current) shoeLeftRef.current.material = shoeMat;
       if (shoeRightRef.current) shoeRightRef.current.material = shoeMat;
@@ -504,21 +525,47 @@ export default function Avatar3D({
       {/* ── SKELETAL ROOT: PELVIS / HIPS (Y=1.00m) ── */}
       <group ref={pelvisRef} position={[0, 1.0, 0]}>
         {/* Navy Jeans Waistband / Pelvis */}
-        <mesh castShadow receiveShadow position={[0, 0, 0]}>
-          <cylinderGeometry args={[0.138, 0.148, 0.13, 24]} />
-          <primitive object={materials.navyJeans} attach="material" />
-        </mesh>
+        <group ref={pelvisJeansRef}>
+          <mesh castShadow receiveShadow position={[0, 0, 0]}>
+            <cylinderGeometry args={[0.138, 0.148, 0.13, 24]} />
+            <primitive object={materials.navyJeans} attach="material" />
+          </mesh>
 
-        {/* Slim Leather Belt */}
-        <mesh position={[0, 0.05, 0]}>
-          <cylinderGeometry args={[0.142, 0.142, 0.018, 24]} />
-          <primitive object={materials.beltLeather} attach="material" />
-        </mesh>
-        {/* Belt Buckle (Gold) */}
-        <mesh position={[0, 0.05, 0.143]}>
-          <boxGeometry args={[0.024, 0.022, 0.008]} />
-          <primitive object={materials.goldBrass} attach="material" />
-        </mesh>
+          {/* Slim Leather Belt */}
+          <mesh position={[0, 0.05, 0]}>
+            <cylinderGeometry args={[0.142, 0.142, 0.018, 24]} />
+            <primitive object={materials.beltLeather} attach="material" />
+          </mesh>
+          {/* Belt Buckle (Gold) */}
+          <mesh position={[0, 0.05, 0.143]}>
+            <boxGeometry args={[0.024, 0.022, 0.008]} />
+            <primitive object={materials.goldBrass} attach="material" />
+          </mesh>
+        </group>
+
+        {/* Dynamic Full Dress (attached directly to pelvis, follows avatar posture) */}
+        <group ref={dressMeshRef} visible={false}>
+          {/* Fitted Bodice covering waist and chest */}
+          <mesh castShadow receiveShadow position={[0, 0.18, 0]}>
+            <cylinderGeometry args={[0.155, 0.138, 0.34, 28]} />
+            <meshStandardMaterial color="#c98a9c" roughness={0.35} />
+          </mesh>
+          {/* Bodice Upper Cowl / Neckline contour */}
+          <mesh castShadow position={[0, 0.34, 0.02]}>
+            <cylinderGeometry args={[0.142, 0.155, 0.06, 28]} />
+            <meshStandardMaterial color="#c98a9c" roughness={0.35} />
+          </mesh>
+          {/* Waistline seam band */}
+          <mesh castShadow position={[0, 0.02, 0]}>
+            <cylinderGeometry args={[0.140, 0.144, 0.03, 28]} />
+            <meshStandardMaterial color="#c98a9c" roughness={0.35} />
+          </mesh>
+          {/* Elegant Flared A-Line Skirt down past knees */}
+          <mesh castShadow receiveShadow position={[0, -0.30, 0]}>
+            <cylinderGeometry args={[0.144, 0.35, 0.62, 32]} />
+            <meshStandardMaterial color="#c98a9c" roughness={0.35} />
+          </mesh>
+        </group>
 
         {/* ── LEFT LEG (FK Hierarchy: Hip -> Thigh -> Knee -> Calf -> Ankle -> Shoe) ── */}
         <group ref={leftHipRef} position={[-0.088, -0.06, 0]}>
@@ -950,18 +997,6 @@ export default function Avatar3D({
             </group>
           </group>
         </group>
-
-        {/* Dynamic Full Dress Mesh (Used only when a dress is selected in Virtual Try-On) */}
-        <mesh
-          ref={dressMeshRef}
-          visible={false}
-          castShadow
-          receiveShadow
-          position={[0, 0.15, 0]}
-        >
-          <cylinderGeometry args={[0.145, 0.26, 0.72, 24]} />
-          <meshStandardMaterial color="#ffffff" roughness={0.4} />
-        </mesh>
       </group>
     </group>
   );

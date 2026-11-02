@@ -123,6 +123,33 @@ export function logoutUser() {
   clearAuthToken();
 }
 
+// ─── Color Name to Hex Mapping ────────────────────────────────────────────────
+const COLOR_NAME_MAP = {
+  white:    '#f8f9fa',
+  black:    '#1c1c1f',
+  navy:     '#1b2a4a',
+  beige:    '#d8cdbf',
+  camel:    '#bca182',
+  grey:     '#4b5563',
+  gray:     '#4b5563',
+  blue:     '#2563eb',
+  emerald:  '#1b4d3e',
+  green:    '#15803d',
+  red:      '#dc2626',
+  pink:     '#ec4899',
+  purple:   '#7c3aed',
+  brown:    '#5c3a21',
+  yellow:   '#f59e0b',
+  charcoal: '#2d3748'
+};
+
+function resolveHexColor(c) {
+  if (!c) return '#9e7bb5';
+  if (typeof c === 'string' && c.startsWith('#')) return c;
+  const lower = String(c).toLowerCase().trim();
+  return COLOR_NAME_MAP[lower] || c;
+}
+
 // ─── Category mapping: backend → frontend ─────────────────────────────────────
 export function mapBackendCategory(backendCat) {
   const map = {
@@ -151,7 +178,7 @@ export function mapBackendCategory(backendCat) {
  */
 function backendItemToProduct(item) {
   const category = mapBackendCategory(item.category);
-  const color    = item.color || '#9e7bb5';
+  const color    = resolveHexColor(item.color);
 
   const garmentTypeMap = {
     tops:        'top',
@@ -174,7 +201,7 @@ function backendItemToProduct(item) {
     description:   item.description || 'Your wardrobe item.',
     details:       ['Personal Wardrobe Item', 'Virtual Try-On Ready'],
     sizes:         item.size ? [item.size] : ['S', 'M', 'L'],
-    colors:        [{ name: 'Custom', hex: color }],
+    colors:        [{ name: item.color || 'Custom', hex: color }],
     primaryColor:  color,
     brand:         item.brand || 'My Wardrobe',
     inStock:       true,

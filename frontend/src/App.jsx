@@ -230,34 +230,109 @@ export default function App() {
 
   // --- Handlers: Virtual Try-On ---
   const handleTryOn = (product) => {
+    if (!product) return;
     setIsTryOnEffect(true);
     setTimeout(() => setIsTryOnEffect(false), 2000);
+    showToast(`Dressed 3D Model in: ${product.name}`);
 
     setCurrentOutfit((prev) => {
       const next = { ...prev };
-      const cat = product.category.toLowerCase();
+      const cat = (product.category || '').toLowerCase();
+      const type = (product.garmentType || '').toLowerCase();
+      const name = (product.name || '').toLowerCase();
 
-      if (cat === 'dresses') {
+      const isDress =
+        cat === 'dresses' ||
+        cat === 'dress' ||
+        type === 'dress' ||
+        name.includes('dress') ||
+        name.includes('gown');
+
+      const isTop =
+        !isDress &&
+        (cat === 'tops' ||
+          cat === 'top' ||
+          cat === 'shirt' ||
+          cat === 't-shirt' ||
+          type === 'top' ||
+          name.includes('shirt') ||
+          name.includes('top') ||
+          name.includes('blouse') ||
+          name.includes('tee') ||
+          name.includes('sweater') ||
+          name.includes('pullover'));
+
+      const isBottom =
+        !isDress &&
+        (cat === 'trousers' ||
+          cat === 'bottom' ||
+          cat === 'bottoms' ||
+          cat === 'jeans' ||
+          cat === 'skirts' ||
+          cat === 'skirt' ||
+          type === 'bottom' ||
+          name.includes('jean') ||
+          name.includes('pant') ||
+          name.includes('trouser') ||
+          name.includes('skirt') ||
+          name.includes('slacks'));
+
+      const isOuterwear =
+        !isDress &&
+        (cat === 'outerwear' ||
+          cat === 'jacket' ||
+          cat === 'coat' ||
+          type === 'outerwear' ||
+          name.includes('jacket') ||
+          name.includes('coat') ||
+          name.includes('trench') ||
+          name.includes('blazer'));
+
+      const isShoes =
+        cat === 'shoes' ||
+        cat === 'footwear' ||
+        type === 'shoes' ||
+        name.includes('shoe') ||
+        name.includes('sneaker') ||
+        name.includes('heel') ||
+        name.includes('pump') ||
+        name.includes('sandal') ||
+        name.includes('boot') ||
+        name.includes('loafer');
+
+      const isAccessory =
+        cat === 'accessories' ||
+        cat === 'accessory' ||
+        cat === 'bags' ||
+        cat === 'bag' ||
+        type === 'accessory' ||
+        name.includes('bag') ||
+        name.includes('belt') ||
+        name.includes('chain') ||
+        name.includes('necklace') ||
+        name.includes('jewelry');
+
+      if (isDress) {
         next.dress = product;
         next.top = null;
         next.bottom = null;
-      } else if (cat === 'tops') {
+      } else if (isTop) {
         next.top = product;
         next.dress = null;
         if (!next.bottom) {
           next.bottom = PRODUCTS.find((p) => p.category === 'trousers');
         }
-      } else if (cat === 'trousers' || cat === 'skirts') {
+      } else if (isBottom) {
         next.bottom = product;
         next.dress = null;
         if (!next.top) {
           next.top = PRODUCTS.find((p) => p.category === 'tops');
         }
-      } else if (cat === 'outerwear') {
+      } else if (isOuterwear) {
         next.outerwear = prev.outerwear?.id === product.id ? null : product;
-      } else if (cat === 'shoes') {
+      } else if (isShoes) {
         next.shoes = product;
-      } else if (cat === 'accessories') {
+      } else if (isAccessory) {
         next.accessory = prev.accessory?.id === product.id ? null : product;
       }
 
@@ -268,26 +343,55 @@ export default function App() {
   const handleTryFullOutfit = (items) => {
     setIsTryOnEffect(true);
     setTimeout(() => setIsTryOnEffect(false), 2200);
+    showToast('Applied curated outfit on 3D Model!');
 
     setCurrentOutfit((prev) => {
       const next = { ...prev };
       items.forEach((item) => {
-        const cat = item.category.toLowerCase();
-        if (cat === 'dresses') {
+        const cat = (item.category || '').toLowerCase();
+        const type = (item.garmentType || '').toLowerCase();
+        const name = (item.name || '').toLowerCase();
+
+        const isDress =
+          cat === 'dresses' ||
+          cat === 'dress' ||
+          type === 'dress' ||
+          name.includes('dress') ||
+          name.includes('gown');
+
+        const isTop =
+          !isDress &&
+          (cat === 'tops' ||
+            cat === 'top' ||
+            cat === 'shirt' ||
+            cat === 't-shirt' ||
+            type === 'top');
+
+        const isBottom =
+          !isDress &&
+          (cat === 'trousers' ||
+            cat === 'bottom' ||
+            cat === 'bottoms' ||
+            cat === 'jeans' ||
+            cat === 'skirts' ||
+            cat === 'skirt' ||
+            type === 'bottom');
+
+        if (isDress) {
           next.dress = item;
           next.top = null;
           next.bottom = null;
-        } else if (cat === 'tops') {
+        } else if (isTop) {
           next.top = item;
           next.dress = null;
-        } else if (cat === 'trousers' || cat === 'skirts') {
+        } else if (isBottom) {
           next.bottom = item;
           next.dress = null;
-        } else if (cat === 'outerwear') {
+        } else if (cat === 'outerwear' || cat === 'jacket' || cat === 'coat') {
           next.outerwear = item;
-        } else if (cat === 'shoes') {
+        } else if (cat === 'shoes' || cat === 'footwear') {
           next.shoes = item;
-        } else if (cat === 'accessories') {
+        } else if (cat === 'accessories' || cat === 'accessory') {
           next.accessory = item;
         }
       });
@@ -623,7 +727,7 @@ export default function App() {
               currentOutfit={currentOutfit}
               isTryOnEffect={isTryOnEffect}
               selectedProduct={selectedProduct}
-              onSelectProduct={(p) => setSelectedProduct(p)}
+              onSelectProduct={(p) => handleTryOn(p)}
               activeCategory={activeCategory}
               cameraMode={cameraMode}
               dpadInput={dpadInput}
@@ -1087,11 +1191,8 @@ export default function App() {
                   return (
                     <button
                       key={item.id}
-                      onClick={() => {
-                        setSelectedProduct(item);
-                        handleTryOn(item);
-                      }}
-                      className={`garment-card${isSelected ? ' selected' : ''}`}
+                      onClick={() => handleTryOn(item)}
+                      className={`garment-card${isWearing ? ' selected' : ''}`}
                       title={`${item.name} — Click to wear on 3D avatar`}
                     >
                       {item.image ? (
