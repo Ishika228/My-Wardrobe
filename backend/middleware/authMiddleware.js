@@ -60,4 +60,39 @@ export const protect = async (req, res, next) => {
   }
 };
 
+/**
+ * Optional Authentication Middleware
+ * If valid Bearer token provided, attaches req.user.
+ * If no token or invalid token, sets req.user = null and continues without error.
+ */
+export const optionalProtect = async (req, res, next) => {
+  let token;
+  const authHeader = req.headers.authorization;
+
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    token = authHeader.split(' ')[1];
+  }
+
+  if (!token) {
+    req.user = null;
+    return next();
+  }
+
+  try {
+    const secret = process.env.JWT_SECRET;
+    if (!secret) {
+      req.user = null;
+      return next();
+    }
+
+    const decoded = jwt.verify(token, secret);
+    const user = await User.findById(decoded.userId).select('-password');
+    req.user = user || null;
+    next();
+  } catch (error) {
+    req.user = null;
+    next();
+  }
+};
+
 export default protect;

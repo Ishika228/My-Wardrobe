@@ -41,7 +41,7 @@ import VRScene from './components/VRScene.jsx';
 import ProductDetailsModal from './components/ProductDetailsModal.jsx';
 import CartDrawer from './components/CartDrawer.jsx';
 import WishlistDrawer from './components/WishlistDrawer.jsx';
-import StylistRecommendations from './components/StylistRecommendations.jsx';
+import GroqAIPanel from './components/GroqAIPanel.jsx';
 import { PRODUCTS, CATEGORIES, getRecommendations } from './data/products.js';
 import { analyzeClothingImage } from './services/aiService.js';
 import {
@@ -724,6 +724,8 @@ export default function App() {
               cameraMode={cameraMode}
               dpadInput={dpadInput}
               onResetDpad={() => setDpadInput({ x: 0, y: 0 })}
+              avatarMode="demo"
+              personalizedProfile={null}
             />
           </Suspense>
         </Canvas>
@@ -1256,17 +1258,13 @@ export default function App() {
       />
 
       {/* =========================================================
-          AI PERSONAL STYLIST DRAWER
+          GROQ RAG AI OUTFIT PANEL
           ========================================================= */}
-      <StylistRecommendations
+      <GroqAIPanel
         isOpen={isStylistOpen}
         onClose={() => setIsStylistOpen(false)}
-        currentOutfit={currentOutfit}
-        selectedProduct={selectedProduct}
-        onSelectProduct={(p) => setSelectedProduct(p)}
-        onTryOn={handleTryOn}
-        onTryFullOutfit={handleTryFullOutfit}
-        onAddToCart={handleAddToCart}
+        onApplyOutfitToAvatar={handleTryOn}
+        mongoClothes={backendWardrobe}
       />
 
       {/* =========================================================
