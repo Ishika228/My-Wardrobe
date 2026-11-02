@@ -7,6 +7,7 @@
 
 export const CATEGORIES = [
   { id: 'all', name: 'All Collection', icon: 'Grid' },
+  { id: 'indian_ethnic', name: 'Indian Sarees & Ethnic', icon: 'Sparkles' },
   { id: 'tops', name: "Women's Tops", icon: 'Shirt' },
   { id: 'dresses', name: 'Dresses', icon: 'Sparkles' },
   { id: 'outerwear', name: 'Jackets & Coats', icon: 'Layers' },
@@ -128,6 +129,118 @@ export const PRODUCTS = [
     position3D: [0.2, 2.1, -1.8],
     complementaryIds: ['trouser-1', 'shoe-1', 'acc-3'],
     image: 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?w=400&auto=format&fit=crop&q=80'
+  },
+
+  // --- INDIAN ETHNIC WEAR & SAREES ---
+  {
+    id: 'ethnic-1',
+    name: 'Royal Banarasi Crimson Silk Saree',
+    category: 'indian_ethnic',
+    price: 340,
+    discountPrice: 285,
+    rating: 5.0,
+    reviewsCount: 210,
+    description: 'An exquisite handwoven pure Banarasi Kanjeevaram silk saree in deep crimson red adorned with intricate 24K gold zari brocade jaal work and opulent pallu borders. A timeless heirloom masterpiece for weddings and festive celebrations.',
+    details: ['100% Pure Mulberry Silk', 'Handwoven Gold Zari Brocade', 'Includes unstitched designer blouse piece', 'Dry clean only'],
+    sizes: ['Free Size (5.5m Saree + 0.8m Blouse)'],
+    colors: [
+      { name: 'Crimson Gold', hex: '#831843' },
+      { name: 'Royal Peacock Blue', hex: '#1e3a8a' },
+      { name: 'Emerald Rani', hex: '#065f46' }
+    ],
+    primaryColor: '#831843',
+    brand: 'Varanasi Heritage',
+    inStock: true,
+    stockCount: 15,
+    featured: true,
+    tags: ['traditional', 'indian', 'saree', 'wedding', 'festive', 'luxury'],
+    garmentType: 'dress',
+    silhouette: 'saree',
+    position3D: [0.6, 2.2, -1.8],
+    complementaryIds: ['ethnic-shoe-1', 'acc-3'],
+    image: 'https://images.unsplash.com/photo-1610030469983-98e550d6193c?w=400&auto=format&fit=crop&q=80'
+  },
+  {
+    id: 'ethnic-2',
+    name: 'Emerald Lucknowi Chikankari Anarkali Suit',
+    category: 'indian_ethnic',
+    price: 260,
+    discountPrice: 220,
+    rating: 4.9,
+    reviewsCount: 142,
+    description: 'A regal floor-length flared Anarkali gown in rich emerald green georgette, hand-embroidered with delicate white Lucknowi Chikankari threadwork, mirror highlights, and a sheer embroidered dupatta.',
+    details: ['Pure Georgette with Butter-Crepe lining', 'Hand-embroidered Lucknowi Chikankari', 'Includes churidar bottoms & embellished dupatta', 'Dry clean recommended'],
+    sizes: ['XS', 'S', 'M', 'L', 'XL'],
+    colors: [
+      { name: 'Royal Emerald', hex: '#065f46' },
+      { name: 'Dusty Rose Pink', hex: '#db2777' },
+      { name: 'Ivory Pearl', hex: '#fdfbf7' }
+    ],
+    primaryColor: '#065f46',
+    brand: 'Oudh Couture',
+    inStock: true,
+    stockCount: 18,
+    featured: true,
+    tags: ['anarkali', 'indian', 'ethnic', 'chikankari', 'festive'],
+    garmentType: 'dress',
+    silhouette: 'anarkali',
+    position3D: [-0.6, 2.2, -1.8],
+    complementaryIds: ['ethnic-shoe-1', 'acc-3'],
+    image: 'https://images.unsplash.com/photo-1583391733956-3750e0ff4e8b?w=400&auto=format&fit=crop&q=80'
+  },
+  {
+    id: 'ethnic-3',
+    name: 'Midnight Navy Georgette Sequined Saree',
+    category: 'indian_ethnic',
+    price: 290,
+    discountPrice: 245,
+    rating: 4.8,
+    reviewsCount: 96,
+    description: 'Glamorous midnight navy lightweight georgette saree embellished with micro-tonal sequins and a scalloped gold zari border. Drapes effortlessly with liquid movement for glamorous sangeet nights.',
+    details: ['Pure Flowing Georgette', 'Micro-sequin embroidery throughout', 'Includes matching raw-silk blouse fabric', 'Dry clean only'],
+    sizes: ['Free Size'],
+    colors: [
+      { name: 'Midnight Navy', hex: '#1e1b4b' },
+      { name: 'Burgundy Wine', hex: '#4c0519' }
+    ],
+    primaryColor: '#1e1b4b',
+    brand: 'Maison Luxe India',
+    inStock: true,
+    stockCount: 12,
+    featured: false,
+    tags: ['saree', 'indian', 'sequin', 'cocktail', 'evening'],
+    garmentType: 'dress',
+    silhouette: 'saree',
+    position3D: [1.8, 2.2, -1.8],
+    complementaryIds: ['ethnic-shoe-1', 'acc-3'],
+    image: 'https://images.unsplash.com/photo-1617627143750-d86bc21e42bb?w=400&auto=format&fit=crop&q=80'
+  },
+  {
+    id: 'ethnic-shoe-1',
+    name: 'Handcrafted Zari Embroidered Velvet Juttis',
+    category: 'shoes',
+    price: 110,
+    discountPrice: 89,
+    rating: 4.9,
+    reviewsCount: 88,
+    description: 'Traditional Punjabi and Rajasthani juttis meticulously hand-embroidered with pure gold zardozi and antique dabka thread on plush velvet, finished with padded leather soles for all-day comfort.',
+    details: ['Velvet upper with zardozi gold embroidery', '100% Genuine Leather sole & cushioned insole', 'Hand-stitched heirloom craft', 'Wipe with soft cloth'],
+    sizes: ['36', '37', '38', '39', '40'],
+    colors: [
+      { name: 'Antique Gold / Crimson', hex: '#b45309' },
+      { name: 'Emerald Velvet', hex: '#064e3b' }
+    ],
+    primaryColor: '#b45309',
+    brand: 'Mughal Artisans',
+    inStock: true,
+    stockCount: 22,
+    featured: true,
+    tags: ['shoes', 'juttis', 'indian', 'ethnic', 'handcrafted'],
+    garmentType: 'shoes',
+    silhouette: 'jutti',
+    position3D: [-1.2, 0.4, 1.2],
+    complementaryIds: ['ethnic-1', 'ethnic-2', 'ethnic-3'],
+    image: 'https://images.unsplash.com/photo-1543163521-1bf539c55dd2?w=400&auto=format&fit=crop&q=80'
   },
 
   // --- DRESSES ---

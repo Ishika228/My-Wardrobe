@@ -197,6 +197,24 @@ export default function Room3D() {
         <pointLight position={[0, 0.5, 0.6]} intensity={1.5} color="#fff6eb" distance={5.5} />
       </group>
 
+      {/* Real Model Live Display Standing Mirror in VIP Penthouse */}
+      <group position={[-1.75, 2.05, -0.65]} rotation={[0, 0.45, 0]}>
+        <mesh position={[0, 0, 0]}>
+          <boxGeometry args={[1.08, 1.9, 0.04]} />
+          <meshStandardMaterial color="#f0d5a8" metalness={0.92} roughness={0.18} />
+        </mesh>
+        <mesh position={[0, 0, 0.024]}>
+          <planeGeometry args={[0.98, 1.8]} />
+          <meshBasicMaterial map={useMemo(() => {
+            const loader = new THREE.TextureLoader();
+            const tex = loader.load('/fashion_lady.png');
+            tex.colorSpace = THREE.SRGBColorSpace;
+            return tex;
+          }, [])} />
+        </mesh>
+        <pointLight position={[0, 0, 0.35]} intensity={0.85} color="#ffe4e6" distance={2.8} />
+      </group>
+
       {/* 6. NEON SCRIPT */}
       <group position={[-3.3, 3.8, -1.7]} rotation={[0, 0.5, 0]}>
         <mesh position={[0, 0.1, 0]}>

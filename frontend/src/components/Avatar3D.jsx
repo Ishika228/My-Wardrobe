@@ -5,105 +5,137 @@ import * as THREE from 'three';
 import { createGarmentPBRMaterial } from '../data/garmentTextures.js';
 
 /**
- * High-End Realistic Female Fashion Model with Modular Rigged Clothing System
- * - Uses Mixamo-rigged humanoid skeleton with natural proportions and detailed features
- * - Dynamically attaches modular garments to the body skeleton using submesh partition
- * - Supports independent swapping of Top, Bottom, Dress, Outerwear, and Shoes
- * - Fully animated with seamless transitions between Idle, Walking, and Turning states
+ * Photorealistic Adult Female 3D Avatar
+ * - True human anatomy, lifelike skin shader, natural hair, eyes, teeth, and proportions
+ * - Supports Mode 1: Photorealistic Demo Model ("Elena")
+ * - Supports Mode 2: MediaPipe Personalized Avatar (Biometric bone scaling & skin adaptation)
+ * - Mixamo skeletal animation retargeting (smooth idle breathing, walking, turning)
+ * - 72 ARKit facial blendshapes with procedural natural eye blinking
+ * - Virtual try-on for Western outfits and Traditional Indian Sarees & Suits
  */
 export default function Avatar3D({
   position = [0, 0, 0],
   rotation = [0, 0, 0],
   isWalking = false,
   outfit = null,
-  isTryOnEffect = false
+  isTryOnEffect = false,
+  mode = 'demo', // 'demo' | 'personalized'
+  personalizedProfile = null
 }) {
   const groupRef = useRef();
+  const avatarSceneRef = useRef();
 
-  // Load avatar and Mixamo animations
+  // Load photorealistic female 3D model & animations
   const avatarGltf = useGLTF('/models/female_avatar.glb');
   const animsGltf = useGLTF('/models/animations.glb');
 
-  // Precomputed triangle partition regions for modular garment attachment
-  const [regions, setRegions] = useState(null);
+  // Retarget Mixamo animation tracks to match the avatar bones (removes 'mixamorig:' prefix)
+  const retargetedAnimations = useMemo(() => {
+    if (!animsGltf?.animations || animsGltf.animations.length === 0) return [];
+    return animsGltf.animations.map((clip) => {
+      const cloned = clip.clone();
+      cloned.tracks.forEach((track) => {
+        // Replace bone track names like "mixamorig:Hips.position" -> "Hips.position"
+        track.name = track.name.replace(/^mixamorig:?/, '');
+      });
+      return cloned;
+    });
+  }, [animsGltf]);
 
-  useEffect(() => {
-    fetch('/models/avatar_regions.json')
-      .then((res) => res.json())
-      .then((data) => setRegions(data))
-      .catch((err) => console.error('Error loading avatar regions:', err));
-  }, []);
+  // Set up animations on the root group
+  const { actions, mixer } = useAnimations(retargetedAnimations, groupRef);
 
-  // Cloned skinned avatar body with modular garment meshes
-  const modularSystem = useMemo(() => {
-    if (!avatarGltf?.scene || !regions) return null;
+  // Mesh references for modular styling and blendshapes
+  const meshesRef = useRef({
+    head: null,
+    body: null,
+    hair: null,
+    top: null,
+    bottom: null,
+    shoes: null,
+    eyes: [],
+    glasses: null,
+    bones: {}
+  });
 
-    // Clone base avatar scene
+  // Clone scene and discover meshes, skeleton bones, and materials
+  const avatarScene = useMemo(() => {
+    if (!avatarGltf?.scene) return null;
+
     const clone = avatarGltf.scene.clone(true);
-    let originalSkinnedMesh = null;
+    const discovered = {
+      head: null,
+      body: null,
+      hair: null,
+      top: null,
+      bottom: null,
+      shoes: null,
+      eyes: [],
+      glasses: null,
+      bones: {}
+    };
 
     clone.traverse((child) => {
-      if (child.isSkinnedMesh && !originalSkinnedMesh) {
-        originalSkinnedMesh = child;
+      if (child.isBone) {
+        discovered.bones[child.name] = child;
+      }
+
+      if (child.isMesh || child.isSkinnedMesh) {
+        child.castShadow = true;
+        child.receiveShadow = true;
+
+        const name = child.name.toLowerCase();
+
+        // Separate submeshes
+        if (name.includes('head')) {
+          discovered.head = child;
+        } else if (name.includes('body')) {
+          discovered.body = child;
+        } else if (name.includes('hair')) {
+          discovered.hair = child;
+        } else if (name.includes('top')) {
+          discovered.top = child;
+        } else if (name.includes('bottom')) {
+          discovered.bottom = child;
+        } else if (name.includes('footwear') || name.includes('shoe')) {
+          discovered.shoes = child;
+        } else if (name.includes('eye') && !name.includes('brow')) {
+          discovered.eyes.push(child);
+        } else if (name.includes('glass')) {
+          discovered.glasses = child;
+          // Hide glasses by default for clean natural face
+          child.visible = false;
+        }
+
+        // Configure realistic PBR skin material
+        if (child.material) {
+          const mat = child.material.clone();
+          const matName = (mat.name || '').toLowerCase();
+
+          if (matName.includes('skin') || matName.includes('body') || matName.includes('head')) {
+            mat.roughness = 0.58;
+            mat.metalness = 0.0;
+            mat.envMapIntensity = 1.0;
+            mat.needsUpdate = true;
+          } else if (matName.includes('eye')) {
+            mat.roughness = 0.1;
+            mat.metalness = 0.05;
+            mat.envMapIntensity = 1.5;
+          } else if (matName.includes('hair')) {
+            mat.roughness = 0.72;
+            mat.metalness = 0.1;
+            mat.envMapIntensity = 0.9;
+          }
+          child.material = mat;
+        }
       }
     });
 
-    if (!originalSkinnedMesh) return null;
+    meshesRef.current = discovered;
+    return clone;
+  }, [avatarGltf]);
 
-    const baseGeom = originalSkinnedMesh.geometry;
-    const skeleton = originalSkinnedMesh.skeleton;
-
-    // Helper to generate a new SkinnedMesh sharing the avatar's exact skeleton and bones
-    function createRegionSkinnedMesh(name, indexArray, baseMat) {
-      const subGeom = baseGeom.clone();
-      subGeom.setIndex(new THREE.Uint16BufferAttribute(new Uint16Array(indexArray), 1));
-      subGeom.computeVertexNormals();
-
-      const mesh = new THREE.SkinnedMesh(subGeom, baseMat);
-      mesh.name = name;
-      mesh.bind(skeleton, originalSkinnedMesh.bindMatrix);
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      return mesh;
-    }
-
-    // Realistic PBR skin material for Head/Face and Arms
-    const baseMat = originalSkinnedMesh.material.clone();
-    baseMat.roughness = 0.48;
-    baseMat.metalness = 0.05;
-    baseMat.envMapIntensity = 1.0;
-
-    // Create modular submeshes
-    const headMesh = createRegionSkinnedMesh('Avatar_Head', regions.head, baseMat);
-    const armsMesh = createRegionSkinnedMesh('Avatar_Arms', regions.arms, baseMat);
-    const topMesh = createRegionSkinnedMesh('Garment_Top', regions.top, baseMat);
-    const bottomMesh = createRegionSkinnedMesh('Garment_Bottom', regions.bottom, baseMat);
-    const shoesMesh = createRegionSkinnedMesh('Garment_Shoes', regions.shoes, baseMat);
-
-    // Replace original monolithic mesh with modular meshes inside parent
-    const parentNode = originalSkinnedMesh.parent;
-    parentNode.remove(originalSkinnedMesh);
-
-    parentNode.add(headMesh);
-    parentNode.add(armsMesh);
-    parentNode.add(topMesh);
-    parentNode.add(bottomMesh);
-    parentNode.add(shoesMesh);
-
-    return {
-      rootScene: clone,
-      headMesh,
-      armsMesh,
-      topMesh,
-      bottomMesh,
-      shoesMesh,
-      baseMat
-    };
-  }, [avatarGltf, regions]);
-
-  // Hook up Mixamo skeletal animations
-  const { actions } = useAnimations(animsGltf?.animations || [], groupRef);
-
+  // Manage Idle vs Walk Animation transitions
   useEffect(() => {
     if (!actions) return;
 
@@ -125,56 +157,204 @@ export default function Avatar3D({
     }
   }, [isWalking, actions]);
 
-  // Dynamic Virtual Try-On: Apply selected wardrobe items onto the avatar modular garments
+  // Natural Procedural Eye Blinking & Micro-Expressions
+  const blinkTimerRef = useRef(0);
+  const nextBlinkIntervalRef = useRef(3.5);
+
+  useFrame((state, delta) => {
+    const headMesh = meshesRef.current.head;
+    if (!headMesh || !headMesh.morphTargetDictionary || !headMesh.morphTargetInfluences) return;
+
+    const dict = headMesh.morphTargetDictionary;
+    const infl = headMesh.morphTargetInfluences;
+
+    blinkTimerRef.current += delta;
+
+    // Trigger blink
+    if (blinkTimerRef.current > nextBlinkIntervalRef.current) {
+      const blinkProgress = (blinkTimerRef.current - nextBlinkIntervalRef.current) / 0.18; // 180ms blink
+      if (blinkProgress <= 1.0) {
+        // Natural eye closure curve
+        const blinkVal = Math.sin(blinkProgress * Math.PI);
+        if (dict['eyeBlinkLeft'] !== undefined) infl[dict['eyeBlinkLeft']] = blinkVal;
+        if (dict['eyeBlinkRight'] !== undefined) infl[dict['eyeBlinkRight']] = blinkVal;
+      } else {
+        // Reset for next blink
+        if (dict['eyeBlinkLeft'] !== undefined) infl[dict['eyeBlinkLeft']] = 0;
+        if (dict['eyeBlinkRight'] !== undefined) infl[dict['eyeBlinkRight']] = 0;
+        blinkTimerRef.current = 0;
+        nextBlinkIntervalRef.current = 2.8 + Math.random() * 2.5; // Natural 2.8s - 5.3s cadence
+      }
+    }
+
+    // Subtle gentle breathing micro-sway on spine
+    const bones = meshesRef.current.bones;
+    const spineBone = bones['Spine1'] || bones['mixamorig:Spine1'];
+    if (spineBone) {
+      const t = state.clock.getElapsedTime();
+      const breathe = Math.sin(t * 1.8) * 0.015;
+      spineBone.scale.z = 1.0 + breathe;
+    }
+  });
+
+  // Mode 2: Apply MediaPipe Biometrics & Reshape Skeleton Bones + Skin Complexion
   useEffect(() => {
-    if (!modularSystem) return;
+    const { bones, head, body } = meshesRef.current;
+    if (!bones) return;
 
-    const { topMesh, bottomMesh, shoesMesh, baseMat } = modularSystem;
+    if (mode === 'personalized' && personalizedProfile) {
+      // 1. Reshape Head & Jawbone
+      const headBone = bones['Head'] || bones['mixamorig:Head'];
+      if (headBone && personalizedProfile.headScale) {
+        const [hx, hy, hz] = personalizedProfile.headScale;
+        headBone.scale.set(hx, hy, hz);
+      }
 
-    // 1. Dress or Top
-    if (outfit?.dress) {
-      // Dress covers both top and bottom with cohesive drape
-      const dressMat = createGarmentPBRMaterial(outfit.dress);
-      topMesh.material = dressMat;
-      bottomMesh.material = dressMat;
-      topMesh.visible = true;
-      bottomMesh.visible = true;
+      // 2. Reshape Shoulders
+      const leftShoulder = bones['LeftShoulder'] || bones['mixamorig:LeftShoulder'];
+      const rightShoulder = bones['RightShoulder'] || bones['mixamorig:RightShoulder'];
+      const sScale = personalizedProfile.shoulderScale || 1.0;
+      if (leftShoulder) leftShoulder.scale.set(sScale, 1.0, 1.0);
+      if (rightShoulder) rightShoulder.scale.set(sScale, 1.0, 1.0);
+
+      // 3. Reshape Torso & Spine
+      const spineBone = bones['Spine'] || bones['mixamorig:Spine'];
+      if (spineBone && personalizedProfile.torsoScale) {
+        const [tx, ty, tz] = personalizedProfile.torsoScale;
+        spineBone.scale.set(tx, ty, tz);
+      }
+
+      // 4. Reshape Hips & Waist
+      const hipsBone = bones['Hips'] || bones['mixamorig:Hips'];
+      const hScale = personalizedProfile.hipScale || 1.0;
+      if (hipsBone) {
+        hipsBone.scale.set(hScale, 1.0, hScale);
+      }
+
+      // 5. Reshape Legs
+      const leftLeg = bones['LeftUpLeg'] || bones['mixamorig:LeftUpLeg'];
+      const rightLeg = bones['RightUpLeg'] || bones['mixamorig:RightUpLeg'];
+      const legScale = personalizedProfile.legScale || 1.0;
+      if (leftLeg) leftLeg.scale.set(1.0, legScale, 1.0);
+      if (rightLeg) rightLeg.scale.set(1.0, legScale, 1.0);
+
+      // 6. Apply Authentic Detected Skin Complexion
+      if (personalizedProfile.skinColor) {
+        const skinCol = new THREE.Color(personalizedProfile.skinColor);
+        if (head?.material) {
+          head.material.color = skinCol;
+          head.material.roughness = 0.58;
+          head.material.needsUpdate = true;
+        }
+        if (body?.material) {
+          body.material.color = skinCol;
+          body.material.roughness = 0.58;
+          body.material.needsUpdate = true;
+        }
+      }
+
+      // 7. Apply Facial Blendshapes
+      if (head?.morphTargetDictionary && head?.morphTargetInfluences && personalizedProfile.morphTargets) {
+        const dict = head.morphTargetDictionary;
+        const infl = head.morphTargetInfluences;
+        Object.entries(personalizedProfile.morphTargets).forEach(([targetName, weight]) => {
+          if (dict[targetName] !== undefined) {
+            infl[dict[targetName]] = weight;
+          }
+        });
+      }
     } else {
-      // Individual Top
+      // Mode 1: Reset to Default Photorealistic Demo Model ("Elena")
+      const resetBones = ['Head', 'LeftShoulder', 'RightShoulder', 'Spine', 'Hips', 'LeftUpLeg', 'RightUpLeg'];
+      resetBones.forEach((bName) => {
+        const bone = bones[bName] || bones[`mixamorig:${bName}`];
+        if (bone) bone.scale.set(1, 1, 1);
+      });
+
+      // Default warm radiant human skin tone
+      const defaultSkin = new THREE.Color('#fbe2d3');
+      if (head?.material) {
+        head.material.color = defaultSkin;
+        head.material.needsUpdate = true;
+      }
+      if (body?.material) {
+        body.material.color = defaultSkin;
+        body.material.needsUpdate = true;
+      }
+    }
+  }, [mode, personalizedProfile, avatarScene]);
+
+  // Dynamic Virtual Try-On: Apply selected clothing onto modular avatar meshes
+  useEffect(() => {
+    const { top, bottom, shoes } = meshesRef.current;
+    if (!top || !bottom || !shoes) return;
+
+    const isIndianEthnic =
+      outfit?.dress?.category === 'indian_ethnic' ||
+      outfit?.top?.category === 'indian_ethnic' ||
+      outfit?.dress?.silhouette === 'saree' ||
+      outfit?.dress?.silhouette === 'anarkali';
+
+    // 1. One-Piece Ensemble: Sarees, Anarkalis, or Western Dresses
+    if (outfit?.dress || isIndianEthnic) {
+      const dressItem = outfit.dress || outfit.top;
+      const dressMat = createGarmentPBRMaterial(dressItem);
+
+      // Top receives bodice / choli / kurta material
+      top.material = dressMat;
+      top.visible = true;
+
+      // Bottom receives pleated saree / anarkali skirt / gown material
+      bottom.material = dressMat;
+      bottom.visible = true;
+    } else {
+      // 2. Separate Top
       if (outfit?.top) {
-        topMesh.material = createGarmentPBRMaterial(outfit.top, 'ribbed');
-        topMesh.visible = true;
+        top.material = createGarmentPBRMaterial(outfit.top, 'ribbed');
+        top.visible = true;
       } else {
-        // Default chic white crop top
-        topMesh.material = createGarmentPBRMaterial({ primaryColor: '#ffffff', category: 'tops', silhouette: 'crop-tank' });
-        topMesh.visible = true;
+        // Default chic ivory silk crop tank
+        top.material = createGarmentPBRMaterial({
+          primaryColor: '#ffffff',
+          category: 'tops',
+          silhouette: 'crop-tank'
+        });
+        top.visible = true;
       }
 
-      // Individual Bottom (Jeans / Trousers / Skirt)
+      // 3. Separate Bottom (Jeans, Trousers, Skirt)
       if (outfit?.bottom) {
-        bottomMesh.material = createGarmentPBRMaterial(outfit.bottom, 'denim');
-        bottomMesh.visible = true;
+        bottom.material = createGarmentPBRMaterial(outfit.bottom, 'denim');
+        bottom.visible = true;
       } else {
-        // Default vintage denim jeans
-        bottomMesh.material = createGarmentPBRMaterial({ primaryColor: '#5e84a8', category: 'trousers', silhouette: 'wide-jeans' });
-        bottomMesh.visible = true;
+        // Default indigo twill denim
+        bottom.material = createGarmentPBRMaterial({
+          primaryColor: '#5e84a8',
+          category: 'trousers',
+          silhouette: 'jeans'
+        });
+        bottom.visible = true;
       }
     }
 
-    // 2. Shoes
+    // 4. Footwear
     if (outfit?.shoes) {
-      shoesMesh.material = createGarmentPBRMaterial(outfit.shoes, 'sneaker');
+      shoes.material = createGarmentPBRMaterial(outfit.shoes, 'sneaker');
     } else {
-      shoesMesh.material = createGarmentPBRMaterial({ primaryColor: '#ffffff', category: 'shoes', silhouette: 'sneakers' });
+      shoes.material = createGarmentPBRMaterial({
+        primaryColor: '#ffffff',
+        category: 'shoes',
+        silhouette: 'sneaker'
+      });
     }
-  }, [outfit, modularSystem]);
+  }, [outfit, avatarScene]);
 
   // Try-on glowing sparkle aura
   const auraRef = useRef();
   useFrame((state, delta) => {
     if (auraRef.current && isTryOnEffect) {
       const t = state.clock.getElapsedTime();
-      auraRef.current.rotation.y += delta * 2;
+      auraRef.current.rotation.y += delta * 2.2;
       const s = 1 + Math.sin(t * 8) * 0.1;
       auraRef.current.scale.set(s, s, s);
     }
@@ -197,18 +377,19 @@ export default function Avatar3D({
         </group>
       )}
 
-      {/* Render the Modular Human Avatar Model */}
-      {modularSystem?.rootScene ? (
+      {/* Render Photorealistic Human Female 3D Avatar */}
+      {avatarScene && (
         <primitive
-          object={modularSystem.rootScene}
-          scale={[1.1, 1.1, 1.1]}
+          ref={avatarSceneRef}
+          object={avatarScene}
+          scale={[1.0, 1.0, 1.0]}
           position={[0, 0, 0]}
         />
-      ) : null}
+      )}
     </group>
   );
 }
 
-// Preload models for immediate instant loading
+// Preload models for instant response
 useGLTF.preload('/models/female_avatar.glb');
 useGLTF.preload('/models/animations.glb');

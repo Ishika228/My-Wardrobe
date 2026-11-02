@@ -79,7 +79,9 @@ export default function VRScene({
   activeCategory,
   cameraMode,
   dpadInput,
-  onResetDpad
+  onResetDpad,
+  avatarMode = 'demo',
+  personalizedProfile = null
 }) {
   return (
     <>
@@ -119,6 +121,8 @@ export default function VRScene({
         isWalking={isWalking}
         outfit={currentOutfit}
         isTryOnEffect={isTryOnEffect}
+        mode={avatarMode}
+        personalizedProfile={personalizedProfile}
       />
 
       {/* Atmospheric Floating Champagne Dust Particles */}

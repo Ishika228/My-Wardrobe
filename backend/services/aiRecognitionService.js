@@ -2,42 +2,37 @@ import fs from 'fs';
 import path from 'path';
 import { aiConfig } from '../config/aiConfig.js';
 import { CLOTHING_CATEGORIES } from '../models/ClothingItem.js';
+import { groqAnalyzeClothingImage } from './groqService.js';
 
 /**
  * Isolated mock prediction provider for offline local testing
  * Clearly flagged so mock data is never mistaken for real AI model inferences.
- * 
+ *
  * @param {string} filename - Filename of the clothing image
  * @returns {object} Standardized mock AI analysis response
  */
 export const getMockAiPrediction = (filename = '') => {
-  const ext = path.extname(filename).toLowerCase();
   const lowerName = filename.toLowerCase();
 
-  // Return realistic mock prediction based on filename hints or default to Jacket
-  let category = 'Jacket';
+  let category    = 'Jacket';
   let subCategory = 'Denim Jacket';
-  let color = 'Blue';
-  let material = 'Denim';
-  let pattern = 'Solid';
+  let color       = 'Blue';
+  let material    = 'Denim';
+  let pattern     = 'Solid';
 
   if (lowerName.includes('shirt')) {
-    category = 'Shirt';
-    subCategory = 'Oxford Shirt';
-    color = 'White';
-    material = 'Cotton';
-    pattern = 'Striped';
+    category = 'Shirt'; subCategory = 'Oxford Shirt'; color = 'White'; material = 'Cotton'; pattern = 'Striped';
   } else if (lowerName.includes('jean') || lowerName.includes('trouser')) {
-    category = 'Jeans';
-    subCategory = 'Slim Fit Denim';
-    color = 'Black';
-    material = 'Denim';
-    pattern = 'Solid';
+    category = 'Jeans'; subCategory = 'Slim Fit Denim'; color = 'Black'; material = 'Denim'; pattern = 'Solid';
+  } else if (lowerName.includes('dress')) {
+    category = 'Dress'; subCategory = 'Casual Dress'; color = 'Red'; material = 'Cotton'; pattern = 'Floral';
+  } else if (lowerName.includes('shoe') || lowerName.includes('boot') || lowerName.includes('sneaker')) {
+    category = 'Shoes'; subCategory = 'Casual Shoes'; color = 'Brown'; material = 'Leather'; pattern = 'Plain';
   }
 
   return {
     success: true,
-    isMock: true,
+    isMock:  true,
     data: {
       category,
       subCategory,
@@ -45,18 +40,23 @@ export const getMockAiPrediction = (filename = '') => {
       secondaryColors: [],
       pattern,
       material,
-      season: ['Autumn', 'Winter'],
-      occasion: ['Casual', 'College'],
-      style: ['Casual', 'Streetwear'],
-      confidence: 0.94,
+      season:     ['Autumn', 'Winter'],
+      occasion:   ['Casual outing', 'College'],
+      style:      ['Casual', 'Streetwear'],
+      confidence: 0.70,
+      fit:        'Regular Fit',
+      neckline:   'Unknown',
+      sleeveLength: 'Unknown',
+      stylingTip: 'Pair with neutral tones for a balanced look.',
+      analyzedBy: 'Mock Fallback',
     },
   };
 };
 
 /**
- * Validates and normalizes raw predictions returned by the AI recognition service
- * 
- * @param {object} rawData - Raw prediction data from AI service or mock
+ * Validates and normalizes raw predictions returned by any AI source
+ *
+ * @param {object} rawData - Raw prediction data
  * @returns {object} Normalized prediction object
  */
 export const normalizeAiPrediction = (rawData = {}) => {
@@ -64,7 +64,6 @@ export const normalizeAiPrediction = (rawData = {}) => {
     throw new Error('Malformed AI recognition payload received.');
   }
 
-  // 1. Validate category against supported CLOTHING_CATEGORIES enum
   let normalizedCategory = null;
   if (rawData.category && typeof rawData.category === 'string') {
     const matched = CLOTHING_CATEGORIES.find(
@@ -73,40 +72,44 @@ export const normalizeAiPrediction = (rawData = {}) => {
     normalizedCategory = matched || 'Other';
   }
 
-  // 2. Validate confidence (clamped between 0 and 1)
   let confidence = null;
   if (typeof rawData.confidence === 'number' && !isNaN(rawData.confidence)) {
     confidence = Math.min(1, Math.max(0, rawData.confidence));
   }
 
   return {
-    category: normalizedCategory,
-    subCategory: rawData.subCategory ? String(rawData.subCategory).trim() : null,
-    color: rawData.color ? String(rawData.color).trim() : null,
+    category:       normalizedCategory,
+    subCategory:    rawData.subCategory   ? String(rawData.subCategory).trim()   : null,
+    color:          rawData.color         ? String(rawData.color).trim()         : null,
     secondaryColors: Array.isArray(rawData.secondaryColors)
-      ? rawData.secondaryColors.map((c) => String(c).trim()).filter(Boolean)
-      : [],
-    pattern: rawData.pattern ? String(rawData.pattern).trim() : null,
-    material: rawData.material ? String(rawData.material).trim() : null,
-    season: Array.isArray(rawData.season)
-      ? rawData.season.map((s) => String(s).trim()).filter(Boolean)
-      : [],
-    occasion: Array.isArray(rawData.occasion)
-      ? rawData.occasion.map((o) => String(o).trim()).filter(Boolean)
-      : [],
-    style: Array.isArray(rawData.style)
-      ? rawData.style.map((st) => String(st).trim()).filter(Boolean)
-      : [],
+      ? rawData.secondaryColors.map((c) => String(c).trim()).filter(Boolean) : [],
+    pattern:        rawData.pattern       ? String(rawData.pattern).trim()       : null,
+    material:       rawData.material      ? String(rawData.material).trim()      : null,
+    season:         Array.isArray(rawData.season)
+      ? rawData.season.map((s) => String(s).trim()).filter(Boolean)   : [],
+    occasion:       Array.isArray(rawData.occasion)
+      ? rawData.occasion.map((o) => String(o).trim()).filter(Boolean) : [],
+    style:          Array.isArray(rawData.style)
+      ? rawData.style.map((st) => String(st).trim()).filter(Boolean)  : [],
+    fit:            rawData.fit           ? String(rawData.fit).trim()           : null,
+    neckline:       rawData.neckline      ? String(rawData.neckline).trim()      : null,
+    sleeveLength:   rawData.sleeveLength  ? String(rawData.sleeveLength).trim()  : null,
     confidence,
+    stylingTip:     rawData.stylingTip    ? String(rawData.stylingTip).trim()    : null,
+    analyzedBy:     rawData.analyzedBy    ? String(rawData.analyzedBy).trim()    : 'Unknown',
   };
 };
 
 /**
- * Sends a clothing image to the external Python AI service via HTTP multipart/form-data.
- * Automatically falls back to the isolated mock adapter if configured and service is unreachable.
- * 
- * @param {string} relativeImagePath - Relative image path stored in MongoDB (e.g. /uploads/clothing/abc.jpg)
- * @returns {Promise<{success: boolean, data: object, isMock: boolean}>}
+ * Main entry point: Analyses a clothing image.
+ *
+ * Priority order:
+ *   1. Groq Vision AI  (LLaMA 4 Scout) — highest accuracy
+ *   2. OpenCV Python AI service         — fallback if Groq unavailable
+ *   3. Mock adapter                     — fallback for offline testing
+ *
+ * @param {string} relativeImagePath - e.g. /uploads/clothing/abc.jpg
+ * @returns {Promise<{success, data, isMock, isGroq}>}
  */
 export const recognizeClothingImage = async (relativeImagePath) => {
   if (!relativeImagePath || typeof relativeImagePath !== 'string') {
@@ -115,9 +118,9 @@ export const recognizeClothingImage = async (relativeImagePath) => {
     throw error;
   }
 
-  // Sanitize path and verify physical file existence on local storage
   const cleanRelative = relativeImagePath.replace(/^\/?uploads\/clothing\//, '');
-  const absolutePath = path.resolve('uploads', 'clothing', path.basename(cleanRelative));
+  const absolutePath  = path.resolve('uploads', 'clothing', path.basename(cleanRelative));
+  const filename      = path.basename(absolutePath);
 
   if (!fs.existsSync(absolutePath)) {
     const error = new Error('Associated clothing image file was not found on local storage.');
@@ -125,94 +128,74 @@ export const recognizeClothingImage = async (relativeImagePath) => {
     throw error;
   }
 
-  const targetUrl = `${aiConfig.serviceUrl}${aiConfig.recognitionEndpoint}`;
-  const filename = path.basename(absolutePath);
+  // ── 1. Try Groq Vision AI ──────────────────────────────────────────────────
+  if (process.env.GROQ_API_KEY) {
+    try {
+      console.log(`[AI] Using Groq Vision for: ${filename}`);
+      const groqResult = await groqAnalyzeClothingImage(absolutePath);
+      const normalized = normalizeAiPrediction(groqResult.data);
+      return { success: true, isMock: false, isGroq: true, data: normalized };
+    } catch (groqErr) {
+      console.warn(`[AI] Groq Vision failed (${groqErr.message}). Falling back to OpenCV service.`);
+    }
+  } else {
+    console.warn('[AI] GROQ_API_KEY not set. Skipping Groq Vision, trying OpenCV service.');
+  }
 
+  // ── 2. Try OpenCV Python AI service ───────────────────────────────────────
+  const targetUrl = `${aiConfig.serviceUrl}${aiConfig.recognitionEndpoint}`;
   try {
     const fileBuffer = fs.readFileSync(absolutePath);
-    const ext = path.extname(filename).toLowerCase();
-    const mimeType = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
+    const ext        = path.extname(filename).toLowerCase();
+    const mimeType   = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
 
     const formData = new FormData();
     formData.append('image', new Blob([fileBuffer], { type: mimeType }), filename);
 
-    // Send HTTP POST to Python AI service with configurable timeout
     const response = await fetch(targetUrl, {
       method: 'POST',
-      body: formData,
+      body:   formData,
       signal: AbortSignal.timeout(aiConfig.timeoutMs),
     });
 
     if (!response.ok) {
-      if ((response.status === 404 || response.status === 502 || response.status === 503) && aiConfig.mockFallback) {
-        console.warn(`[AI Service Notice] AI service at ${targetUrl} returned HTTP ${response.status}. Falling back to isolated mock adapter for local testing.`);
-        const mockResult = getMockAiPrediction(filename);
-        const normalizedData = normalizeAiPrediction(mockResult.data);
-        return {
-          success: true,
-          isMock: true,
-          data: normalizedData,
-        };
-      }
-
-      const errorText = await response.text().catch(() => '');
-      const error = new Error(`AI service returned HTTP ${response.status}: ${errorText || response.statusText}`);
-      error.statusCode = 502;
-      throw error;
+      throw new Error(`OpenCV service returned HTTP ${response.status}`);
     }
 
     const json = await response.json();
-
     if (!json || json.success !== true || !json.data) {
-      const error = new Error('AI recognition service returned invalid or missing prediction data.');
-      error.statusCode = 502;
-      throw error;
+      throw new Error('OpenCV service returned invalid prediction data.');
     }
 
     const normalizedData = normalizeAiPrediction(json.data);
+    console.log(`[AI] OpenCV service succeeded for: ${filename}`);
+    return { success: true, isMock: false, isGroq: false, data: normalizedData };
 
-    return {
-      success: true,
-      isMock: false,
-      data: normalizedData,
-    };
-  } catch (err) {
-    // Check if network error or service unreachable
+  } catch (opencvErr) {
     const isNetworkError =
-      err.code === 'ECONNREFUSED' ||
-      err.code === 'ENOTFOUND' ||
-      err.name === 'TimeoutError' ||
-      err.name === 'AbortError' ||
-      err.message?.includes('fetch failed') ||
-      err.message?.includes('ECONNREFUSED');
+      opencvErr.code === 'ECONNREFUSED' ||
+      opencvErr.code === 'ENOTFOUND'    ||
+      opencvErr.name === 'TimeoutError' ||
+      opencvErr.name === 'AbortError'   ||
+      opencvErr.message?.includes('fetch failed') ||
+      opencvErr.message?.includes('ECONNREFUSED');
 
-    // If mock fallback is enabled and service is offline, use documented mock adapter
-    if (isNetworkError && aiConfig.mockFallback) {
-      console.warn(`[AI Service Notice] AI service at ${targetUrl} is unreachable (${err.message}). Using isolated mock adapter for testing.`);
-      const mockResult = getMockAiPrediction(filename);
-      const normalizedData = normalizeAiPrediction(mockResult.data);
-      return {
-        success: true,
-        isMock: true,
-        data: normalizedData,
-      };
+    if (isNetworkError || opencvErr.message?.includes('HTTP')) {
+      console.warn(`[AI] OpenCV service unreachable (${opencvErr.message}).`);
     }
-
-    // Map network errors to proper HTTP gateway status codes
-    if (err.name === 'TimeoutError' || err.name === 'AbortError') {
-      const timeoutError = new Error(`AI recognition request timed out after ${aiConfig.timeoutMs}ms.`);
-      timeoutError.statusCode = 504;
-      throw timeoutError;
-    }
-
-    if (isNetworkError) {
-      const serviceError = new Error(`AI recognition service is unavailable at ${aiConfig.serviceUrl}. Please ensure the Python service is running.`);
-      serviceError.statusCode = 503;
-      throw serviceError;
-    }
-
-    throw err;
   }
+
+  // ── 3. Mock fallback ───────────────────────────────────────────────────────
+  if (aiConfig.mockFallback) {
+    console.warn(`[AI] All AI services unavailable. Using mock adapter for: ${filename}`);
+    const mockResult = getMockAiPrediction(filename);
+    const normalizedData = normalizeAiPrediction(mockResult.data);
+    return { success: true, isMock: true, isGroq: false, data: normalizedData };
+  }
+
+  const serviceError = new Error('All AI recognition services are unavailable and mock fallback is disabled.');
+  serviceError.statusCode = 503;
+  throw serviceError;
 };
 
 export default {

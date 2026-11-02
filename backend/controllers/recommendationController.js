@@ -2,6 +2,35 @@ import mongoose from 'mongoose';
 import ClothingItem from '../models/ClothingItem.js';
 import OutfitHistory from '../models/OutfitHistory.js';
 import { requestOutfitRecommendations } from '../services/aiRecommendationService.js';
+import { executeRAGOutfitStylist } from '../services/ragService.js';
+
+/**
+ * @desc    RAG (Retrieval-Augmented Generation) Fashion Stylist Endpoint
+ *          Retrieves authentic MongoDB clothing items & generates grounded outfits
+ * @route   POST /api/recommendations/rag-outfits
+ * @access  Public / Optional Auth (Guest uses seeded wardrobe, Auth user uses personal)
+ */
+export const getRAGOutfitRecommendations = async (req, res, next) => {
+  try {
+    const { query, occasion, style, weather, preferredColors } = req.body;
+    const userId = req.user?._id;
+
+    const result = await executeRAGOutfitStylist({
+      userId,
+      query: query || '',
+      preferences: {
+        occasion,
+        style,
+        weather,
+        preferredColors
+      }
+    });
+
+    return res.status(200).json(result);
+  } catch (error) {
+    next(error);
+  }
+};
 
 /**
  * @desc    Get AI-generated outfit recommendations based on user wardrobe and preferences
@@ -70,14 +99,16 @@ export const getOutfitRecommendations = async (req, res, next) => {
       // If at least one valid user-owned item is present, include the recommendation
       if (validItemIds.length > 0) {
         validatedRecommendations.push({
-          outfitName: rec.outfitName,
-          clothingItems: populatedItems,
-          clothingItemIds: validItemIds,
-          confidence: rec.confidence,
-          explanation: rec.explanation,
-          occasion: rec.occasion || preferences.occasion,
-          style: rec.style || preferences.style,
-          season: rec.season || preferences.weather,
+          outfitName:         rec.outfitName,
+          clothingItems:      populatedItems,
+          clothingItemIds:    validItemIds,
+          confidence:         rec.confidence,
+          explanation:        rec.explanation,
+          occasion:           rec.occasion          || preferences.occasion,
+          style:              rec.style             || preferences.style,
+          season:             rec.season            || preferences.weather,
+          colorHarmony:       rec.colorHarmony      || null,
+          sustainabilityNote: rec.sustainabilityNote || null,
         });
       }
     }
@@ -109,7 +140,9 @@ export const getOutfitRecommendations = async (req, res, next) => {
       data: {
         recommendations: validatedRecommendations,
         preferences,
-        isMock: Boolean(aiResult.isMock),
+        isMock:  Boolean(aiResult.isMock),
+        isGroq:  Boolean(aiResult.isGroq),
+        modelUsed: aiResult.modelUsed || (aiResult.isGroq ? 'llama-3.3-70b-versatile' : 'rule-based'),
         historyId: historyRecord ? historyRecord._id : undefined,
       },
     });
@@ -126,4 +159,5 @@ export const getOutfitRecommendations = async (req, res, next) => {
 
 export default {
   getOutfitRecommendations,
+  getRAGOutfitRecommendations
 };

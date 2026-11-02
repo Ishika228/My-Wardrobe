@@ -12,8 +12,12 @@ import outfitRoutes from './routes/outfitRoutes.js';
 import recommendationRoutes from './routes/recommendationRoutes.js';
 import { notFoundHandler, errorHandler } from './middleware/errorMiddleware.js';
 
-// Load environment variables
-dotenv.config();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Load environment variables from backend/.env regardless of CWD
+dotenv.config({ path: path.join(__dirname, '.env') });
+dotenv.config(); // fallback to CWD if present
 
 const app = express();
 const DEFAULT_PORT = process.env.PORT || 5000;
@@ -89,7 +93,10 @@ const startServer = async (port = DEFAULT_PORT) => {
 };
 
 // Automatically start if executed directly via node or nodemon
-const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+const isMain =
+  process.argv[1] &&
+  (path.resolve(process.argv[1]).toLowerCase() === fileURLToPath(import.meta.url).toLowerCase() ||
+   process.argv[1].endsWith('server.js'));
 if (isMain) {
   startServer();
 }

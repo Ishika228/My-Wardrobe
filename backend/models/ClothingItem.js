@@ -13,6 +13,13 @@ export const CLOTHING_CATEGORIES = [
   'Skirt',
   'Shoes',
   'Accessories',
+  'Ethnic',
+  'Traditional',
+  'Saree',
+  'Kurti',
+  'Anarkali',
+  'Lehenga',
+  'Suit',
   'Other',
 ];
 

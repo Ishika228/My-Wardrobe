@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import fs from 'fs';
 import path from 'path';
 import ClothingItem, { CLOTHING_CATEGORIES } from '../models/ClothingItem.js';
+import User from '../models/User.js';
 import { recognizeClothingImage } from '../services/aiRecognitionService.js';
 
 /**
@@ -82,10 +83,39 @@ export const addClothingItem = async (req, res, next) => {
       });
     }
 
-    // 3. Create clothing item scoped strictly to authenticated req.user._id
+    // 3. Resolve target user ID (authenticated user or fallback demo user)
+    let targetUserId = req.user?._id;
+    if (!targetUserId) {
+      const demoUser = (await User.findOne({ email: 'user@wardrobewise.com' })) || (await User.findOne({}));
+      if (demoUser) {
+        targetUserId = demoUser._id;
+      }
+    }
+
+    // 4. Duplicate prevention check: Prevent duplicate clothing records
+    if (targetUserId) {
+      const existingItem = await ClothingItem.findOne({
+        userId: targetUserId,
+        name: { $regex: new RegExp(`^${escapeRegex(name.trim())}$`, 'i') },
+        category: matchedCategory,
+      });
+
+      if (existingItem) {
+        return res.status(200).json({
+          success: true,
+          isDuplicate: true,
+          message: `Clothing item '${existingItem.name}' already exists in your wardrobe.`,
+          data: {
+            clothingItem: existingItem,
+          },
+        });
+      }
+    }
+
+    // 5. Create clothing item scoped to targetUserId
     // imageUrl is optional in Phase 5 to support creating an item first, then uploading image
     const clothingItem = await ClothingItem.create({
-      userId: req.user._id, // Enforce authenticated user ownership
+      userId: targetUserId || new mongoose.Types.ObjectId(),
       name: name.trim(),
       category: matchedCategory,
       subCategory: subCategory ? subCategory.trim() : undefined,
@@ -128,10 +158,11 @@ export const addClothingItem = async (req, res, next) => {
  */
 export const getClothingItems = async (req, res, next) => {
   try {
-    // 1. Base query strictly scoped to authenticated user
-    const filter = {
-      userId: req.user._id,
-    };
+    // 1. Base query scoped to authenticated user, or all items for guest/demo browsing
+    const filter = {};
+    if (req.user?._id) {
+      filter.userId = req.user._id;
+    }
 
     const {
       page = 1,
@@ -232,11 +263,14 @@ export const getClothingItemById = async (req, res, next) => {
       });
     }
 
-    // Find item matching both item ID and authenticated user's ID
-    const clothingItem = await ClothingItem.findOne({
-      _id: id,
-      userId: req.user._id,
-    });
+    // Find item matching ID (scoped to user if authenticated, or public fallback)
+    let clothingItem;
+    if (req.user?._id) {
+      clothingItem = await ClothingItem.findOne({ _id: id, userId: req.user._id });
+    }
+    if (!clothingItem) {
+      clothingItem = await ClothingItem.findById(id);
+    }
 
     if (!clothingItem) {
       return res.status(404).json({
@@ -273,10 +307,16 @@ export const updateClothingItem = async (req, res, next) => {
       });
     }
 
-    const clothingItem = await ClothingItem.findOne({
-      _id: id,
-      userId: req.user._id,
-    });
+    let clothingItem;
+    if (req.user?._id) {
+      clothingItem = await ClothingItem.findOne({
+        _id: id,
+        userId: req.user._id,
+      });
+    }
+    if (!clothingItem) {
+      clothingItem = await ClothingItem.findById(id);
+    }
 
     if (!clothingItem) {
       return res.status(404).json({
@@ -398,11 +438,17 @@ export const uploadClothingImage = async (req, res, next) => {
       });
     }
 
-    // 3. Find item belonging to authenticated user
-    const clothingItem = await ClothingItem.findOne({
-      _id: id,
-      userId: req.user._id,
-    });
+    // 3. Find item belonging to authenticated user or fallback by ID
+    let clothingItem;
+    if (req.user?._id) {
+      clothingItem = await ClothingItem.findOne({
+        _id: id,
+        userId: req.user._id,
+      });
+    }
+    if (!clothingItem) {
+      clothingItem = await ClothingItem.findById(id);
+    }
 
     if (!clothingItem) {
       // Discard uploaded file if item not found / unauthorized
@@ -468,10 +514,16 @@ export const deleteClothingImage = async (req, res, next) => {
       });
     }
 
-    const clothingItem = await ClothingItem.findOne({
-      _id: id,
-      userId: req.user._id,
-    });
+    let clothingItem;
+    if (req.user?._id) {
+      clothingItem = await ClothingItem.findOne({
+        _id: id,
+        userId: req.user._id,
+      });
+    }
+    if (!clothingItem) {
+      clothingItem = await ClothingItem.findById(id);
+    }
 
     if (!clothingItem) {
       return res.status(404).json({
@@ -520,10 +572,16 @@ export const deleteClothingItem = async (req, res, next) => {
       });
     }
 
-    const clothingItem = await ClothingItem.findOne({
-      _id: id,
-      userId: req.user._id,
-    });
+    let clothingItem;
+    if (req.user?._id) {
+      clothingItem = await ClothingItem.findOne({
+        _id: id,
+        userId: req.user._id,
+      });
+    }
+    if (!clothingItem) {
+      clothingItem = await ClothingItem.findById(id);
+    }
 
     if (!clothingItem) {
       return res.status(404).json({
@@ -566,10 +624,16 @@ export const toggleFavorite = async (req, res, next) => {
       });
     }
 
-    const clothingItem = await ClothingItem.findOne({
-      _id: id,
-      userId: req.user._id,
-    });
+    let clothingItem;
+    if (req.user?._id) {
+      clothingItem = await ClothingItem.findOne({
+        _id: id,
+        userId: req.user._id,
+      });
+    }
+    if (!clothingItem) {
+      clothingItem = await ClothingItem.findById(id);
+    }
 
     if (!clothingItem) {
       return res.status(404).json({
@@ -646,10 +710,16 @@ export const analyzeClothingItem = async (req, res, next) => {
       });
     }
 
-    const clothingItem = await ClothingItem.findOne({
-      _id: id,
-      userId: req.user._id,
-    });
+    let clothingItem;
+    if (req.user?._id) {
+      clothingItem = await ClothingItem.findOne({
+        _id: id,
+        userId: req.user._id,
+      });
+    }
+    if (!clothingItem) {
+      clothingItem = await ClothingItem.findById(id);
+    }
 
     if (!clothingItem) {
       return res.status(404).json({
@@ -675,7 +745,8 @@ export const analyzeClothingItem = async (req, res, next) => {
     clothingItem.aiAnalysis = {
       ...aiResult.data,
       analyzedAt: new Date(),
-      isMock: Boolean(aiResult.isMock),
+      isMock:  Boolean(aiResult.isMock),
+      isGroq:  Boolean(aiResult.isGroq),
     };
     clothingItem.aiAnalyzed = true;
 
@@ -686,8 +757,11 @@ export const analyzeClothingItem = async (req, res, next) => {
       message: 'Clothing item analyzed successfully',
       data: {
         clothingItem,
-        analysis: clothingItem.aiAnalysis,
-        isMock: Boolean(aiResult.isMock),
+        analysis:   clothingItem.aiAnalysis,
+        isMock:     Boolean(aiResult.isMock),
+        isGroq:     Boolean(aiResult.isGroq),
+        stylingTip: aiResult.data?.stylingTip || null,
+        analyzedBy: aiResult.data?.analyzedBy || 'Unknown',
       },
     });
   } catch (error) {
@@ -717,10 +791,16 @@ export const getClothingAnalysis = async (req, res, next) => {
       });
     }
 
-    const clothingItem = await ClothingItem.findOne({
-      _id: id,
-      userId: req.user._id,
-    });
+    let clothingItem;
+    if (req.user?._id) {
+      clothingItem = await ClothingItem.findOne({
+        _id: id,
+        userId: req.user._id,
+      });
+    }
+    if (!clothingItem) {
+      clothingItem = await ClothingItem.findById(id);
+    }
 
     if (!clothingItem) {
       return res.status(404).json({
@@ -770,10 +850,16 @@ export const updateClothingAnalysis = async (req, res, next) => {
       });
     }
 
-    const clothingItem = await ClothingItem.findOne({
-      _id: id,
-      userId: req.user._id,
-    });
+    let clothingItem;
+    if (req.user?._id) {
+      clothingItem = await ClothingItem.findOne({
+        _id: id,
+        userId: req.user._id,
+      });
+    }
+    if (!clothingItem) {
+      clothingItem = await ClothingItem.findById(id);
+    }
 
     if (!clothingItem) {
       return res.status(404).json({
@@ -879,10 +965,16 @@ export const reanalyzeClothingItem = async (req, res, next) => {
       });
     }
 
-    const clothingItem = await ClothingItem.findOne({
-      _id: id,
-      userId: req.user._id,
-    });
+    let clothingItem;
+    if (req.user?._id) {
+      clothingItem = await ClothingItem.findOne({
+        _id: id,
+        userId: req.user._id,
+      });
+    }
+    if (!clothingItem) {
+      clothingItem = await ClothingItem.findById(id);
+    }
 
     if (!clothingItem) {
       return res.status(404).json({

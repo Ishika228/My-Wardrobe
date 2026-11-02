@@ -17,6 +17,8 @@ ai_service/sample_data/uploads/*
 node_modules/
 backend/node_modules/
 frontend/node_modules/
+dist/
+frontend/dist/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -32,6 +34,9 @@ frontend/.env
 frontend/.env.local
 
 # Backend uploaded media
+uploads/
+uploads/*
+!uploads/.gitkeep
 backend/uploads/*
 !backend/uploads/.gitkeep
 !backend/uploads/clothing/

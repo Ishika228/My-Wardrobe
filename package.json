@@ -1,0 +1,13 @@
+{
+  "name": "wardrobewise-suite",
+  "version": "1.0.0",
+  "description": "WardrobeWise — Virtual Reality Penthouse Boutique & Real Model Try-On Studio with MongoDB Atlas",
+  "scripts": {
+    "seed": "cd backend && node scripts/seedDatabase.js",
+    "backend": "cd backend && npm start",
+    "backend:dev": "cd backend && npm run dev",
+    "frontend": "cd frontend && npm run dev",
+    "build:frontend": "cd frontend && npm run build"
+  }
+}
+

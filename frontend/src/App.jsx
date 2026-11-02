@@ -1,4 +1,4 @@
-import React, { useRef, useState, useMemo, Suspense } from 'react';
+import React, { useRef, useState, useMemo, useEffect, useCallback, Suspense } from 'react';
 import { Canvas } from '@react-three/fiber';
 import {
   Home,
@@ -27,13 +27,25 @@ import {
   Sparkle,
   Footprints,
   Maximize2,
-  Tv
+  Tv,
+  Zap,
+  Database,
+  Plus,
+  Award,
+  Scan
 } from 'lucide-react';
 import VRScene from './components/VRScene.jsx';
 import ProductDetailsModal from './components/ProductDetailsModal.jsx';
 import CartDrawer from './components/CartDrawer.jsx';
 import WishlistDrawer from './components/WishlistDrawer.jsx';
 import StylistRecommendations from './components/StylistRecommendations.jsx';
+import GroqAIPanel from './components/GroqAIPanel.jsx';
+import AuthModal from './components/AuthModal.jsx';
+import WardrobeManager from './components/WardrobeManager.jsx';
+import RealWomanFittingRoom from './components/RealWomanFittingRoom.jsx';
+import PersonalizedAvatarModal from './components/PersonalizedAvatarModal.jsx';
+import { useAuth } from './context/AuthContext.jsx';
+import { getClothingItems } from './services/api.js';
 import { PRODUCTS, CATEGORIES, getRecommendations } from './data/products.js';
 
 // Loading fallback for 3D canvas
@@ -48,6 +60,128 @@ function LoadingScreen() {
 
 export default function App() {
   const controlsRef = useRef();
+  const { user, isAuthenticated, logout } = useAuth();
+
+  // --- Modals & Drawers ---
+  const [isAuthOpen, setIsAuthOpen] = useState(false);
+  const [isWardrobeManagerOpen, setIsWardrobeManagerOpen] = useState(false);
+  const [isRealModelOpen, setIsRealModelOpen] = useState(false);
+  const [isPersonalizedModalOpen, setIsPersonalizedModalOpen] = useState(false);
+
+  // --- Avatar Mode: Mode 1 (Photorealistic Demo Avatar) vs Mode 2 (MediaPipe Personalized Avatar) ---
+  const [avatarMode, setAvatarMode] = useState('demo'); // 'demo' | 'personalized'
+  const [personalizedProfile, setPersonalizedProfile] = useState(null);
+
+  const handleApplyPersonalizedProfile = (profile) => {
+    setPersonalizedProfile(profile);
+    setAvatarMode('personalized');
+    setIsTryOnEffect(true);
+    setTimeout(() => setIsTryOnEffect(false), 1200);
+  };
+
+  const handleResetToDemoAvatar = () => {
+    setPersonalizedProfile(null);
+    setAvatarMode('demo');
+    setIsTryOnEffect(true);
+    setTimeout(() => setIsTryOnEffect(false), 1200);
+  };
+
+  // --- MongoDB Clothes State ---
+  const [mongoClothes, setMongoClothes] = useState([]);
+  const [isLoadingMongo, setIsLoadingMongo] = useState(false);
+
+  const loadMongoClothes = useCallback(async () => {
+    setIsLoadingMongo(true);
+    try {
+      const res = await getClothingItems({ limit: 50 });
+      if (res && res.success) {
+        const rawItems = res.data?.clothingItems || res.data || [];
+        const normalized = rawItems.map((item) => {
+          const rawCat = (item.category || '').toLowerCase();
+          let category = 'tops';
+          if (['shirt', 't-shirt', 'blouse', 'top', 'sweater', 'hoodie', 'kurti'].includes(rawCat)) {
+            category = 'tops';
+          } else if (['trousers', 'jeans', 'bottom', 'bottoms', 'pants', 'salwar', 'churidar'].includes(rawCat)) {
+            category = 'trousers';
+          } else if (['dress', 'dresses', 'gown', 'saree', 'sari', 'anarkali', 'lehenga', 'suit', 'ethnic'].includes(rawCat)) {
+            category = 'dresses';
+          } else if (['jacket', 'coat', 'blazer', 'outerwear', 'dupatta', 'shawl'].includes(rawCat)) {
+            category = 'outerwear';
+          } else if (['skirt', 'skirts'].includes(rawCat)) {
+            category = 'skirts';
+          } else if (['shoes', 'sneakers', 'boots', 'heels', 'jutti', 'juttis'].includes(rawCat)) {
+            category = 'shoes';
+          } else if (['bag', 'accessory', 'accessories', 'jewelry'].includes(rawCat)) {
+            category = 'accessories';
+          }
+
+          let colorHex = '#ffffff';
+          if (item.color) {
+            if (typeof item.color === 'object') {
+              colorHex = item.color.primary || '#ffffff';
+            } else if (typeof item.color === 'string') {
+              const c = item.color.toLowerCase();
+              if (c === 'black') colorHex = '#222222';
+              else if (c === 'white') colorHex = '#ffffff';
+              else if (c === 'grey' || c === 'gray') colorHex = '#888888';
+              else if (c === 'navy' || c === 'blue') colorHex = '#1e3a8a';
+              else if (c === 'beige' || c === 'cream') colorHex = '#d4b79b';
+              else if (c === 'emerald' || c === 'green') colorHex = '#065f46';
+              else if (c === 'burgundy' || c === 'red') colorHex = '#831843';
+              else if (item.color.startsWith('#')) colorHex = item.color;
+            }
+          }
+
+          let image = item.imageUrl || null;
+          if (image && image.startsWith('/uploads')) {
+            image = 'http://localhost:5000' + image;
+          }
+
+          return {
+            id: item._id,
+            name: item.name,
+            category,
+            price: item.price || 120,
+            rating: 4.9,
+            reviewsCount: 42,
+            description: `${item.name} by ${item.brand || 'WardrobeWise'}. Material: ${item.material || 'Premium Textile'}. Occasion: ${(item.occasion || []).join(', ') || 'Versatile'}.`,
+            details: [
+              `Material: ${item.material || '100% Quality Fabric'}`,
+              `Brand: ${item.brand || 'WardrobeWise Collection'}`,
+              `Season: ${(item.season || ['All Seasons']).join(', ')}`,
+              `Occasion: ${(item.occasion || ['Casual']).join(', ')}`,
+              `Stored in MongoDB: Yes`
+            ],
+            sizes: ['XS', 'S', 'M', 'L'],
+            colors: [{ name: typeof item.color === 'string' ? item.color : 'Custom', hex: colorHex }],
+            primaryColor: colorHex,
+            brand: item.brand || 'MongoDB Wardrobe',
+            inStock: true,
+            featured: true,
+            tags: [
+              'mongodb',
+              ...(item.occasion || []),
+              ...(item.season || []),
+              ...(item.style || [])
+            ].map((t) => String(t).toLowerCase()),
+            isMongo: true,
+            material: item.material,
+            image,
+            garmentType: category === 'dresses' ? 'dress' : category === 'trousers' ? 'bottom' : category
+          };
+        });
+        setMongoClothes(normalized);
+      }
+    } catch (err) {
+      console.warn('Could not load MongoDB clothes:', err.message);
+    } finally {
+      setIsLoadingMongo(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadMongoClothes();
+  }, [loadMongoClothes, isAuthenticated]);
 
   // --- Avatar Position, Heading & Walking State ---
   const [avatarPosition, setAvatarPosition] = useState([0, 0, 0]);
@@ -89,9 +223,10 @@ export default function App() {
   const [wishlistItems, setWishlistItems] = useState([PRODUCTS[3], PRODUCTS[10]]);
 
   // --- Drawers Open/Close ---
-  const [isCartOpen, setIsCartOpen] = useState(false);
+  const [isCartOpen, setIsCartOpen]         = useState(false);
   const [isWishlistOpen, setIsWishlistOpen] = useState(false);
-  const [isStylistOpen, setIsStylistOpen] = useState(false);
+  const [isStylistOpen, setIsStylistOpen]   = useState(false);
+  const [isGroqOpen, setIsGroqOpen]         = useState(false);
 
   // --- Mobile Touch D-Pad State ---
   const [dpadInput, setDpadInput] = useState({ x: 0, y: 0 });
@@ -99,34 +234,35 @@ export default function App() {
 
   // --- Handlers: Virtual Try-On ---
   const handleTryOn = (product) => {
+    if (!product) return;
     setIsTryOnEffect(true);
     setTimeout(() => setIsTryOnEffect(false), 2000);
 
     setCurrentOutfit((prev) => {
       const next = { ...prev };
-      const cat = product.category.toLowerCase();
+      const cat = (product.category || '').toLowerCase();
 
-      if (cat === 'dresses') {
+      if (cat === 'dresses' || cat === 'dress' || cat === 'saree' || cat === 'anarkali' || cat === 'lehenga') {
         next.dress = product;
         next.top = null;
         next.bottom = null;
-      } else if (cat === 'tops') {
+      } else if (cat === 'tops' || cat === 'top' || cat === 'shirt' || cat === 'kurti') {
         next.top = product;
         next.dress = null;
         if (!next.bottom) {
           next.bottom = PRODUCTS.find((p) => p.category === 'trousers');
         }
-      } else if (cat === 'trousers' || cat === 'skirts') {
+      } else if (cat === 'trousers' || cat === 'bottom' || cat === 'skirts' || cat === 'skirt') {
         next.bottom = product;
         next.dress = null;
         if (!next.top) {
           next.top = PRODUCTS.find((p) => p.category === 'tops');
         }
-      } else if (cat === 'outerwear') {
+      } else if (cat === 'outerwear' || cat === 'jacket') {
         next.outerwear = prev.outerwear?.id === product.id ? null : product;
-      } else if (cat === 'shoes') {
+      } else if (cat === 'shoes' || cat === 'shoe' || cat === 'jutti') {
         next.shoes = product;
-      } else if (cat === 'accessories') {
+      } else if (cat === 'accessories' || cat === 'accessory') {
         next.accessory = prev.accessory?.id === product.id ? null : product;
       }
 
@@ -297,10 +433,12 @@ export default function App() {
     setDpadInput({ x: 0, y: 0 });
   };
 
-  // Filtered Products for Right Wardrobe Sidebar
+  // Filtered Products for Right Wardrobe Sidebar combining MongoDB & Boutique
   const displayedCatalog = useMemo(() => {
-    let items = PRODUCTS;
-    if (activeCategory !== 'all') {
+    let items = [...mongoClothes, ...PRODUCTS];
+    if (activeCategory === 'mongodb') {
+      items = mongoClothes;
+    } else if (activeCategory !== 'all') {
       items = items.filter((p) => p.category === activeCategory.toLowerCase());
     }
     if (activeOccasion && activeOccasion !== 'All') {
@@ -309,7 +447,7 @@ export default function App() {
       if (matched.length > 0) items = matched;
     }
     return items;
-  }, [activeCategory, activeOccasion]);
+  }, [activeCategory, activeOccasion, mongoClothes]);
 
   return (
     <div className="app-root">
@@ -348,6 +486,8 @@ export default function App() {
               cameraMode={cameraMode}
               dpadInput={dpadInput}
               onResetDpad={() => setDpadInput({ x: 0, y: 0 })}
+              avatarMode={avatarMode}
+              personalizedProfile={personalizedProfile}
             />
           </Suspense>
         </Canvas>
@@ -384,6 +524,76 @@ export default function App() {
 
         {/* Right Controls */}
         <div className="topbar-actions">
+          {/* Avatar Mode Switcher: Mode 1 (Demo Model) vs Mode 2 (MediaPipe Personalized AI) */}
+          <div className="avatar-mode-segmented">
+            <button
+              onClick={() => setAvatarMode('demo')}
+              className={`mode-segment-btn ${avatarMode === 'demo' ? 'active' : ''}`}
+              title="Mode 1: Default Photorealistic Demo Model (Elena)"
+            >
+              <Award size={13} className={avatarMode === 'demo' ? 'text-pink-300' : 'text-white/60'} />
+              <span>Mode 1: Demo Avatar</span>
+            </button>
+            <button
+              onClick={() => {
+                if (personalizedProfile) {
+                  setAvatarMode('personalized');
+                } else {
+                  setIsPersonalizedModalOpen(true);
+                }
+              }}
+              className={`mode-segment-btn ${avatarMode === 'personalized' ? 'active' : ''}`}
+              title="Mode 2: Personalized Avatar from Photo (MediaPipe Landmark AI)"
+            >
+              <Scan size={13} className={avatarMode === 'personalized' ? 'text-emerald-300' : 'text-white/60'} />
+              <span>
+                {personalizedProfile ? 'Mode 2: Personalized' : 'Mode 2: Personalize +'}
+              </span>
+            </button>
+            <button
+              onClick={() => setIsPersonalizedModalOpen(true)}
+              className="mode-edit-btn"
+              title="Upload photo / Fine-tune biometric landmarks"
+            >
+              ⚙️
+            </button>
+          </div>
+
+          {/* Real Lady Fitting Studio Pill */}
+          <button
+            onClick={() => setIsRealModelOpen(true)}
+            className="real-lady-nav-pill"
+            title="Open Real Woman Model Try-On Studio"
+          >
+            <Sparkles size={14} className="text-amber-300" />
+            <span>Real Lady Try-On</span>
+          </button>
+
+          {/* MongoDB Wardrobe Pill */}
+          <button
+            onClick={() => setIsWardrobeManagerOpen(true)}
+            className="mongo-nav-pill"
+            title="Manage MongoDB Wardrobe"
+          >
+            <Database size={13} />
+            <span>MongoDB ({mongoClothes.length})</span>
+          </button>
+
+          {/* RAG AI Fashion Stylist */}
+          <button
+            onClick={() => setIsGroqOpen(true)}
+            className="topbar-pill-btn"
+            style={{
+              background: 'linear-gradient(135deg, rgba(124,58,237,0.35), rgba(236,72,153,0.35))',
+              border: '1px solid rgba(167,139,250,0.45)',
+              color: '#ffffff'
+            }}
+            title="Open VR-RAG AI Fashion Stylist & Outfit Generator"
+          >
+            <Sparkles size={13} className="text-pink-300" />
+            <span>RAG AI Stylist</span>
+          </button>
+
           <button
             onClick={handleGoToMirror}
             className={`topbar-pill-btn${cameraMode === 'mirror' ? ' active' : ''}`}
@@ -435,13 +645,20 @@ export default function App() {
             )}
           </button>
 
-          <div className="profile-pill">
+          <div
+            className="profile-pill"
+            onClick={() => setIsAuthOpen(true)}
+            style={{ cursor: 'pointer' }}
+            title={isAuthenticated ? `Signed in as ${user?.name || user?.email}` : 'Click to Sign In or use Demo User'}
+          >
             <img
-              src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80"
-              alt="Style Queen"
+              src="/fashion_lady.png"
+              alt="Model"
               className="profile-avatar"
             />
-            <span className="profile-name">Hi, Style Queen</span>
+            <span className="profile-name">
+              {isAuthenticated ? (user?.name || user?.email?.split('@')[0]) : 'Sign In / Demo'}
+            </span>
             <ChevronDown size={13} />
           </div>
         </div>
@@ -454,6 +671,38 @@ export default function App() {
         <button className="dock-btn active" title="Home">
           <Home size={18} />
           <span>Home</span>
+        </button>
+        <button
+          className="dock-btn"
+          title="Real Lady Fitting Studio"
+          onClick={() => setIsRealModelOpen(true)}
+          style={{ position: 'relative' }}
+        >
+          <Sparkles size={18} className="text-pink-400" />
+          <span>Real Lady</span>
+          <span style={{
+            position: 'absolute', top: 4, right: 4, width: 6, height: 6,
+            background: '#ec4899', borderRadius: '50%',
+            boxShadow: '0 0 6px #ec4899'
+          }} />
+        </button>
+        <button
+          className="dock-btn"
+          title="MongoDB Wardrobe"
+          onClick={() => setIsWardrobeManagerOpen(true)}
+          style={{ position: 'relative' }}
+        >
+          <Database size={18} className="text-emerald-400" />
+          <span>MongoDB</span>
+          {mongoClothes.length > 0 && (
+            <span style={{
+              position: 'absolute', top: 2, right: 2,
+              background: '#059669', color: '#fff', fontSize: '9px',
+              fontWeight: '700', borderRadius: '10px', padding: '1px 4px'
+            }}>
+              {mongoClothes.length}
+            </span>
+          )}
         </button>
         <button
           className="dock-btn"
@@ -470,6 +719,20 @@ export default function App() {
         >
           <Sparkles size={18} />
           <span>Mirror</span>
+        </button>
+        <button
+          className="dock-btn"
+          title="Groq AI — Scan & Recommend"
+          onClick={() => setIsGroqOpen(true)}
+          style={{ position:'relative' }}
+        >
+          <Zap size={18} />
+          <span>Groq AI</span>
+          <span style={{
+            position:'absolute', top:4, right:4, width:6, height:6,
+            background:'#7c3aed', borderRadius:'50%',
+            boxShadow:'0 0 6px #7c3aed'
+          }} />
         </button>
         <button
           className="dock-btn"
@@ -598,6 +861,7 @@ export default function App() {
           <div className="cat-grid">
             {[
               { key: 'all',         label: 'All',      Icon: Grid },
+              { key: 'mongodb',     label: 'MongoDB',  Icon: Database },
               { key: 'tops',        label: 'Tops',     Icon: Shirt },
               { key: 'trousers',    label: 'Bottoms',  Icon: Scissors },
               { key: 'dresses',     label: 'Dresses',  Icon: Sparkles },
@@ -621,7 +885,11 @@ export default function App() {
         <div>
           <div className="catalog-header">
             <h3 className="catalog-title">
-              {activeCategory === 'all' ? 'Featured Pieces' : activeCategory.charAt(0).toUpperCase() + activeCategory.slice(1)}
+              {activeCategory === 'all'
+                ? 'Featured Pieces'
+                : activeCategory === 'mongodb'
+                ? `MongoDB Wardrobe (${displayedCatalog.length})`
+                : activeCategory.charAt(0).toUpperCase() + activeCategory.slice(1)}
             </h3>
             <button className="view-all-btn" onClick={() => setActiveCategory('all')}>
               <span>View All ({displayedCatalog.length})</span>
@@ -653,6 +921,11 @@ export default function App() {
                   {isWearing && (
                     <span className="wearing-dot" title="Currently wearing">
                       <Check size={9} strokeWidth={3} />
+                    </span>
+                  )}
+                  {item.isMongo && (
+                    <span className="mongo-item-tag" title="Stored in MongoDB Database">
+                      <Database size={8} /> DB
                     </span>
                   )}
                 </button>
@@ -761,6 +1034,74 @@ export default function App() {
         onSelectProduct={(p) => setSelectedProduct(p)}
         onTryOn={handleTryOn}
         onTryFullOutfit={handleTryFullOutfit}
+      />
+
+      {/* =========================================================
+          GROQ RAG AI PANEL — Image Scan + RAG Outfit Recommender
+          ========================================================= */}
+      <GroqAIPanel
+        isOpen={isGroqOpen}
+        onClose={() => setIsGroqOpen(false)}
+        onApplyOutfitToAvatar={(outfit) => {
+          setCurrentOutfit(outfit);
+          setIsTryOnEffect(true);
+          setTimeout(() => setIsTryOnEffect(false), 1200);
+        }}
+        mongoClothes={mongoClothes}
+      />
+
+      {/* =========================================================
+          REAL WOMAN MODEL FITTING STUDIO
+          ========================================================= */}
+      <RealWomanFittingRoom
+        isOpen={isRealModelOpen}
+        onClose={() => setIsRealModelOpen(false)}
+        currentOutfit={currentOutfit}
+        onTryOn={handleTryOn}
+        onResetOutfit={handleResetOutfit}
+        onOpenWardrobeManager={() => {
+          setIsRealModelOpen(false);
+          setIsWardrobeManagerOpen(true);
+        }}
+        onAddToCart={handleAddToCart}
+        onToggleWishlist={handleToggleWishlist}
+        mongoItems={mongoClothes}
+        onSwitchToVR={() => {
+          setIsRealModelOpen(false);
+          handleGoToMirror();
+        }}
+        isTryOnEffect={isTryOnEffect}
+        onOpenPersonalizedModal={() => setIsPersonalizedModalOpen(true)}
+      />
+
+      {/* =========================================================
+          MONGODB DIGITAL WARDROBE MANAGER
+          ========================================================= */}
+      <WardrobeManager
+        isOpen={isWardrobeManagerOpen}
+        onClose={() => setIsWardrobeManagerOpen(false)}
+        onItemAdded={loadMongoClothes}
+        onTryOn={handleTryOn}
+      />
+
+      {/* =========================================================
+          AUTHENTICATION MODAL
+          ========================================================= */}
+      <AuthModal
+        isOpen={isAuthOpen}
+        onClose={() => setIsAuthOpen(false)}
+        onSuccess={loadMongoClothes}
+      />
+
+      {/* =========================================================
+          MODE 2: MEDIAPIPE PERSONALIZED AVATAR MODAL
+          ========================================================= */}
+      <PersonalizedAvatarModal
+        isOpen={isPersonalizedModalOpen}
+        onClose={() => setIsPersonalizedModalOpen(false)}
+        currentProfile={personalizedProfile}
+        onApplyProfile={handleApplyPersonalizedProfile}
+        onResetToDemo={handleResetToDemoAvatar}
       />
     </div>
   );
