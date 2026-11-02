@@ -7,6 +7,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
+    "seed": "node scripts/seedDatabase.js",
     "test": "node tests/modelValidation.test.js && node tests/auth.test.js && node tests/clothing.test.js && node tests/imageUpload.test.js && node tests/aiRecognition.test.js && node tests/outfit.test.js && node tests/aiRecommendation.test.js && node tests/securityAndIntegration.test.js",
     "test:models": "node tests/modelValidation.test.js",
     "test:auth": "node tests/auth.test.js",
