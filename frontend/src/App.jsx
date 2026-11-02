@@ -1021,25 +1021,7 @@ export default function App() {
               <strong style={{ color: '#c4a8e0' }}>Sign in</strong> to sync your wardrobe &amp; save outfits
             </span>
           </div>
-        ) : (
-          <div style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            padding: '7px 12px', borderRadius: 10, marginBottom: 14,
-            background: 'rgba(52,211,153,0.08)', border: '1px solid rgba(52,211,153,0.2)'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-              <span className="mongodb-dot" />
-              <span style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.7)' }}>
-                MongoDB Atlas: <strong style={{ color: '#86efac' }}>{backendWardrobe.length} stored {backendWardrobe.length === 1 ? 'item' : 'items'}</strong>
-                {isLoadingWardrobe && ' (syncing…)'}
-              </span>
-            </div>
-            <span className="mongodb-badge">
-              <Database size={10} />
-              Connected
-            </span>
-          </div>
-        )}
+        ) : null}
 
         {/* Clothing Categories */}
         <div>
@@ -1078,10 +1060,6 @@ export default function App() {
 
           <div className="catalog-header">
             <h3 className="catalog-title">Upload Cloth to Wardrobe</h3>
-            <span className="mongodb-badge" title="Stored in MongoDB Atlas database">
-              <Database size={10} />
-              MongoDB
-            </span>
           </div>
 
           {/* Dedicated Upload Button / Dropzone */}
@@ -1116,9 +1094,7 @@ export default function App() {
                 <h3 className="catalog-title">
                   {panelTab === 'wardrobe' ? 'My Wardrobe Pieces' : 'Store Catalog'}
                 </h3>
-                {panelTab === 'wardrobe' && (
-                  <span className="mongodb-badge">MongoDB</span>
-                )}
+                {panelTab === 'wardrobe' && null}
               </div>
               <span style={{ fontSize: '11px', color: 'rgba(255, 255, 255, 0.55)' }}>
                 {displayedItems.length} {displayedItems.length === 1 ? 'piece' : 'pieces'}
