@@ -246,12 +246,12 @@ export default function App() {
     if (!controlsRef.current) return;
     const ctrl = controlsRef.current;
     if (isZoomedIn) {
-      ctrl.object.position.set(0, 2.2, 5.2);
-      ctrl.target.set(avatarPosition[0], 1.8, avatarPosition[2]);
+      ctrl.object.position.set(0, 1.9, 3.4);
+      ctrl.target.set(avatarPosition[0], 1.75, avatarPosition[2]);
       setIsZoomedIn(false);
     } else {
-      ctrl.object.position.set(avatarPosition[0], 2.2, avatarPosition[2] + 2.4);
-      ctrl.target.set(avatarPosition[0], 2.0, avatarPosition[2]);
+      ctrl.object.position.set(avatarPosition[0], 2.2, avatarPosition[2] + 1.7);
+      ctrl.target.set(avatarPosition[0], 2.2, avatarPosition[2]);
       setIsZoomedIn(true);
     }
   };
@@ -320,7 +320,7 @@ export default function App() {
       <div className="canvas-layer">
         <Canvas
           shadows
-          camera={{ position: [0, 2.2, 5.2], fov: 48 }}
+          camera={{ position: [0, 1.9, 3.4], fov: 44 }}
           gl={{
             antialias: true,
             alpha: false,

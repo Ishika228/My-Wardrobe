@@ -123,11 +123,11 @@ export default function AvatarController({
 
       if (cameraMode === 'mirror') {
         // Position camera for full-length mirror outfit inspection
-        const targetLook = new THREE.Vector3(currentPos.current.x, 1.8, currentPos.current.z);
+        const targetLook = new THREE.Vector3(currentPos.current.x, 1.75, currentPos.current.z);
         controls.target.lerp(targetLook, 0.08);
       } else if (cameraMode === 'follow') {
-        // Smoothly interpolate orbit controls target to avatar hips
-        const targetLook = new THREE.Vector3(currentPos.current.x, 1.8, currentPos.current.z);
+        // Smoothly interpolate orbit controls target to avatar upper body / face level
+        const targetLook = new THREE.Vector3(currentPos.current.x, 1.75, currentPos.current.z);
         controls.target.lerp(targetLook, 0.08);
 
         if (moving) {

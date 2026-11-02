@@ -121,72 +121,72 @@ function createHairTexture() {
   return tex;
 }
 
-// 3D Eye Component with multi-layer cornea, iris gradient & specular catchlights
+// 3D Eye Component with multi-layer cornea, emerald iris, limbal ring & specular catchlights
 function Stylized3DEye({ isLeft = true }) {
   const flip = isLeft ? 1 : -1;
   return (
-    <group position={[0.048 * flip, 0.038, 0.088]} rotation={[-0.04, 0.12 * flip, 0.03 * flip]}>
-      {/* Eyeball / Cornea (Sclera) */}
+    <group position={[0.046 * flip, 0.040, 0.096]} rotation={[-0.02, 0.10 * flip, 0.02 * flip]}>
+      {/* Sclera (Eyeball) */}
       <mesh castShadow>
-        <sphereGeometry args={[0.027, 24, 20]} />
-        <meshStandardMaterial color="#fcfcfc" roughness={0.15} metalness={0.05} />
+        <sphereGeometry args={[0.030, 24, 20]} />
+        <meshStandardMaterial color="#ffffff" roughness={0.12} metalness={0.02} />
       </mesh>
 
-      {/* Iris Disc (Emerald Green Gradient with Dark Limbal Ring) */}
-      <group position={[0, 0, 0.021]}>
-        {/* Outer dark ring */}
+      {/* Iris Disc & Pupil Facing Forward */}
+      <group position={[0, 0, 0.024]}>
+        {/* Dark Limbal Ring */}
         <mesh>
-          <circleGeometry args={[0.016, 24]} />
-          <meshBasicMaterial color="#163820" />
+          <circleGeometry args={[0.018, 28]} />
+          <meshBasicMaterial color="#14341b" />
         </mesh>
-        {/* Vibrant emerald body */}
+        {/* Vibrant Emerald Iris Body */}
         <mesh position={[0, 0, 0.001]}>
-          <circleGeometry args={[0.0135, 24]} />
-          <meshBasicMaterial color="#429b5a" />
+          <circleGeometry args={[0.0155, 28]} />
+          <meshBasicMaterial color="#2fa753" />
         </mesh>
-        {/* Inner bright lime ring */}
+        {/* Bright Jade Center Ring */}
         <mesh position={[0, 0, 0.002]}>
-          <circleGeometry args={[0.009, 20]} />
-          <meshBasicMaterial color="#72d688" />
+          <circleGeometry args={[0.011, 24]} />
+          <meshBasicMaterial color="#68db82" />
         </mesh>
-        {/* Pupil */}
+        {/* Deep Black Pupil */}
         <mesh position={[0, 0, 0.003]}>
-          <circleGeometry args={[0.006, 18]} />
-          <meshBasicMaterial color="#0b0503" />
+          <circleGeometry args={[0.007, 20]} />
+          <meshBasicMaterial color="#0a0503" />
         </mesh>
-        {/* Primary bright catchlight */}
-        <mesh position={[0.0035, 0.0045, 0.004]}>
-          <circleGeometry args={[0.0032, 12]} />
+        {/* Crisp Specular Catchlight (Top-Right) */}
+        <mesh position={[0.0044, 0.005, 0.004]}>
+          <circleGeometry args={[0.0038, 14]} />
           <meshBasicMaterial color="#ffffff" />
         </mesh>
-        {/* Secondary softer catchlight */}
-        <mesh position={[-0.0045, -0.0035, 0.004]}>
-          <circleGeometry args={[0.0018, 10]} />
-          <meshBasicMaterial color="rgba(255,255,255,0.7)" />
+        {/* Secondary Specular Soft Reflection */}
+        <mesh position={[-0.005, -0.0042, 0.004]}>
+          <circleGeometry args={[0.0022, 10]} />
+          <meshBasicMaterial color="rgba(255,255,255,0.75)" />
         </mesh>
       </group>
 
-      {/* Upper Eyelid / Curved Lash Rim */}
-      <mesh position={[0, 0.015, 0.018]} rotation={[0.45, 0, 0.08 * flip]}>
-        <torusGeometry args={[0.024, 0.0032, 8, 20, Math.PI * 0.9]} />
-        <meshStandardMaterial color="#241107" roughness={0.4} />
+      {/* Elegant Curved Black Upper Eyelash / Liner Rim */}
+      <mesh position={[0, 0.016, 0.020]} rotation={[0.42, 0, 0.06 * flip]}>
+        <torusGeometry args={[0.027, 0.0038, 8, 24, Math.PI * 0.95]} />
+        <meshBasicMaterial color="#1a0c06" />
       </mesh>
 
-      {/* Outer Eyelash Wing */}
+      {/* Winged Outer Eyelash Tip */}
       <mesh
-        position={[0.021 * flip, 0.013, 0.019]}
-        rotation={[0.3, 0.2 * flip, -0.5 * flip]}
+        position={[0.025 * flip, 0.015, 0.019]}
+        rotation={[0.25, 0.25 * flip, -0.55 * flip]}
       >
-        <coneGeometry args={[0.0028, 0.012, 6]} />
-        <meshStandardMaterial color="#241107" roughness={0.4} />
+        <coneGeometry args={[0.0032, 0.015, 8]} />
+        <meshBasicMaterial color="#1a0c06" />
       </mesh>
 
-      {/* Gracefully Arched Eyebrow */}
+      {/* Arched Chestnut-Brown Eyebrow */}
       <mesh
-        position={[0.002 * flip, 0.034, 0.014]}
-        rotation={[-0.2, 0.1 * flip, -0.06 * flip]}
+        position={[0.002 * flip, 0.038, 0.016]}
+        rotation={[-0.18, 0.08 * flip, -0.05 * flip]}
       >
-        <torusGeometry args={[0.028, 0.0038, 8, 16, Math.PI * 0.7]} />
+        <torusGeometry args={[0.031, 0.0044, 8, 18, Math.PI * 0.72]} />
         <meshStandardMaterial color="#381c0c" roughness={0.6} />
       </mesh>
     </group>
@@ -486,7 +486,10 @@ export default function Avatar3D({
   });
 
   return (
-    <group ref={groupRef} position={position} rotation={rotation}>
+    <group ref={groupRef} position={position} rotation={rotation} scale={[1.45, 1.45, 1.45]}>
+      {/* Dedicated Soft Front Face & Beauty Key Light - Ensures face is crystal clear and vivid */}
+      <pointLight position={[0, 1.75, 1.1]} intensity={1.8} color="#fff9f2" distance={3.8} />
+
       {/* Sparkle Try-on aura */}
       {isTryOnEffect && (
         <group ref={auraRef} position={[0, 1.2, 0]}>
@@ -781,37 +784,90 @@ export default function Avatar3D({
                 <primitive object={materials.skin} attach="material" />
               </mesh>
 
-              {/* ── HEAD & FACIAL SCULPT ── */}
+              {/* ── HEAD & FACIAL SCULPT (Stylized Expressive Face matching Image 1) ── */}
               <group ref={headRef} position={[0, 0.17, 0]}>
                 {/* Smooth 3D Cranium / Head Skull (Warm Peach Porcelain Skin) */}
-                <mesh castShadow position={[0, 0.045, -0.012]} scale={[0.92, 1.08, 0.95]}>
-                  <sphereGeometry args={[0.112, 32, 28]} />
+                <mesh castShadow position={[0, 0.045, -0.005]} scale={[0.96, 1.10, 0.98]}>
+                  <sphereGeometry args={[0.118, 32, 28]} />
                   <primitive object={materials.skin} attach="material" />
                 </mesh>
 
-                {/* Delicate Chin & Jawline Contour */}
-                <mesh castShadow position={[0, -0.028, 0.032]} scale={[1.0, 1.0, 0.9]}>
-                  <coneGeometry args={[0.082, 0.13, 24]} rotation={[Math.PI, 0, 0]} />
+                {/* Soft Feminine Cheek Contours */}
+                <mesh position={[-0.052, 0.018, 0.065]} scale={[1, 1.1, 0.8]}>
+                  <sphereGeometry args={[0.046, 16, 16]} />
+                  <primitive object={materials.skin} attach="material" />
+                </mesh>
+                <mesh position={[0.052, 0.018, 0.065]} scale={[1, 1.1, 0.8]}>
+                  <sphereGeometry args={[0.046, 16, 16]} />
                   <primitive object={materials.skin} attach="material" />
                 </mesh>
 
-                {/* Soft Airbrushed Facial Decal (Lips, Blush, Soft Shading) */}
-                <mesh position={[0, 0.032, 0.096]}>
-                  <planeGeometry args={[0.175, 0.19]} />
-                  <meshStandardMaterial
-                    map={cachedFace}
-                    transparent
-                    opacity={0.96}
-                    roughness={0.52}
-                    metalness={0.01}
-                  />
+                {/* Delicate Cheek Blush */}
+                <mesh position={[-0.058, 0.016, 0.088]} rotation={[0, -0.35, 0]}>
+                  <circleGeometry args={[0.024, 20]} />
+                  <meshBasicMaterial color="#e27068" transparent opacity={0.38} />
+                </mesh>
+                <mesh position={[0.058, 0.016, 0.088]} rotation={[0, 0.35, 0]}>
+                  <circleGeometry args={[0.024, 20]} />
+                  <meshBasicMaterial color="#e27068" transparent opacity={0.38} />
                 </mesh>
 
-                {/* 3D Sculpted Nose Bridge & Tip */}
-                <mesh castShadow position={[0, 0.022, 0.104]}>
-                  <sphereGeometry args={[0.0125, 16, 14]} />
+                {/* Delicate Tapered Jaw and Chin */}
+                <mesh castShadow position={[0, -0.036, 0.040]} scale={[0.88, 1.0, 0.82]}>
+                  <sphereGeometry args={[0.056, 20, 18]} />
                   <primitive object={materials.skin} attach="material" />
                 </mesh>
+
+                {/* 3D Cute Sculpted Button Nose */}
+                {/* Nose Bridge */}
+                <mesh position={[0, 0.030, 0.106]} rotation={[0.22, 0, 0]}>
+                  <cylinderGeometry args={[0.006, 0.009, 0.032, 12]} />
+                  <primitive object={materials.skin} attach="material" />
+                </mesh>
+                {/* Nose Tip */}
+                <mesh castShadow position={[0, 0.016, 0.118]}>
+                  <sphereGeometry args={[0.011, 16, 14]} />
+                  <primitive object={materials.skin} attach="material" />
+                </mesh>
+                {/* Nostril Wings */}
+                <mesh position={[-0.010, 0.013, 0.110]}>
+                  <sphereGeometry args={[0.0055, 12, 10]} />
+                  <primitive object={materials.skin} attach="material" />
+                </mesh>
+                <mesh position={[0.010, 0.013, 0.110]}>
+                  <sphereGeometry args={[0.0055, 12, 10]} />
+                  <primitive object={materials.skin} attach="material" />
+                </mesh>
+
+                {/* 3D Sculpted Rosy Lips (Cupid's Bow & Gloss) */}
+                {/* Upper Lip with Cupid's Bow */}
+                <group position={[0, -0.015, 0.104]}>
+                  <mesh position={[-0.012, 0.002, 0]}>
+                    <sphereGeometry args={[0.010, 14, 12]} scale={[1.4, 0.65, 0.8]} />
+                    <meshStandardMaterial color="#c6474b" roughness={0.35} />
+                  </mesh>
+                  <mesh position={[0.012, 0.002, 0]}>
+                    <sphereGeometry args={[0.010, 14, 12]} scale={[1.4, 0.65, 0.8]} />
+                    <meshStandardMaterial color="#c6474b" roughness={0.35} />
+                  </mesh>
+                  <mesh position={[0, 0.004, 0.001]}>
+                    <sphereGeometry args={[0.006, 10, 8]} scale={[1.0, 0.8, 0.8]} />
+                    <meshStandardMaterial color="#c6474b" roughness={0.35} />
+                  </mesh>
+                </group>
+
+                {/* Lower Lip (Plump with Gloss Highlight) */}
+                <group position={[0, -0.027, 0.101]}>
+                  <mesh>
+                    <sphereGeometry args={[0.014, 16, 14]} scale={[1.8, 0.75, 0.9]} />
+                    <meshStandardMaterial color="#d8565b" roughness={0.30} />
+                  </mesh>
+                  {/* Gloss Specular Shine */}
+                  <mesh position={[0, -0.002, 0.010]}>
+                    <sphereGeometry args={[0.004, 10, 8]} scale={[2.0, 0.5, 0.5]} />
+                    <meshBasicMaterial color="#ffffff" transparent opacity={0.65} />
+                  </mesh>
+                </group>
 
                 {/* Left 3D Eye (Cornea, Emerald Iris, Catchlight & Curved Lashes) */}
                 <Stylized3DEye isLeft={true} />
