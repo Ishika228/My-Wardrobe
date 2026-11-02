@@ -69,12 +69,14 @@ export async function loginUser(email, password) {
     body: JSON.stringify({ email, password })
   });
   const data = await res.json();
-  if (!res.ok || !data.token) {
+  const token = data.data?.token || data.token;
+  const user  = data.data?.user  || data.user;
+  if (!res.ok || !token) {
     throw new Error(data.message || 'Login failed. Check your email and password.');
   }
-  saveAuthToken(data.token);
-  saveUser(data.user);
-  return data;
+  saveAuthToken(token);
+  if (user) saveUser(user);
+  return { token, user };
 }
 
 /**
@@ -87,12 +89,14 @@ export async function registerUser(name, email, password) {
     body: JSON.stringify({ name, email, password })
   });
   const data = await res.json();
-  if (!res.ok || !data.token) {
+  const token = data.data?.token || data.token;
+  const user  = data.data?.user  || data.user;
+  if (!res.ok || !token) {
     throw new Error(data.message || 'Registration failed. Please try again.');
   }
-  saveAuthToken(data.token);
-  saveUser(data.user);
-  return data;
+  saveAuthToken(token);
+  if (user) saveUser(user);
+  return { token, user };
 }
 
 /**
@@ -235,7 +239,8 @@ export async function addClothingItem(token, { name, category, color, brand, des
   if (!res.ok || !data.data) {
     throw new Error(data.message || 'Failed to save clothing to wardrobe');
   }
-  return backendItemToProduct(data.data);
+  const item = data.data.clothingItem || data.data;
+  return backendItemToProduct(item);
 }
 
 /**
@@ -254,7 +259,8 @@ export async function uploadClothingImage(token, clothingId, file) {
     });
     if (!res.ok) return null;
     const data = await res.json();
-    return data.data ? backendItemToProduct(data.data) : null;
+    const item = data.data?.clothingItem || data.data;
+    return item ? backendItemToProduct(item) : null;
   } catch (err) {
     console.warn('[backendService] uploadClothingImage failed:', err.message);
     return null;
