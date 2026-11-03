@@ -540,9 +540,14 @@ export default function Avatar3D({
       const dressMat = buildGarmentMaterial(dressItem, origTopMat);
       const customGlbUrl = dressItem?.modelUrl || dressItem?.model3d?.modelUrl;
 
+      // Calculate dress width/scale to ensure it fully encloses and fits the avatar body with zero exposure on the sides
+      const scaleX = isIndianEthnic ? 1.12 : isFloralOrPuff ? 1.08 : 1.40;
+      const scaleY = isIndianEthnic ? 1.01 : isFloralOrPuff ? 1.005 : 1.01;
+      const scaleZ = isIndianEthnic ? 1.12 : isFloralOrPuff ? 1.08 : 1.22;
+
       // If a custom cloud-generated GLB URL exists, load and auto-rig it
       if (customGlbUrl && top?.skeleton) {
-        loadAndRigGlbGarment(customGlbUrl, top.skeleton, top.bindMatrix, 'dress', dressMat)
+        loadAndRigGlbGarment(customGlbUrl, top.skeleton, top.bindMatrix, 'dress', dressMat, { scaleX, scaleY, scaleZ })
           .then((riggedMesh) => {
             if (isDisposed || tryOnSeqRef.current !== currentSeq) {
               riggedMesh.geometry?.dispose?.();
@@ -574,7 +579,7 @@ export default function Avatar3D({
             cleanAllAttachedDresses();
             if (targetGeom && top?.skeleton) {
               const geom = targetGeom.clone();
-              geom.scale(1.025, 1.005, 1.025);
+              geom.scale(scaleX, scaleY, scaleZ);
               const dressSkinnedMesh = new THREE.SkinnedMesh(geom, dressMat);
               dressSkinnedMesh.name = 'Avatar_Active_Dress';
               dressSkinnedMesh.userData.isTryOnGarment = true;
@@ -600,7 +605,7 @@ export default function Avatar3D({
         // Direct authentic SkinnedMesh binding
         cleanAllAttachedDresses();
         const geom = targetGeom.clone();
-        geom.scale(1.025, 1.005, 1.025);
+        geom.scale(scaleX, scaleY, scaleZ);
         const dressSkinnedMesh = new THREE.SkinnedMesh(geom, dressMat);
         dressSkinnedMesh.name = 'Avatar_Active_Dress';
         dressSkinnedMesh.userData.isTryOnGarment = true;
