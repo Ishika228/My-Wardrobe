@@ -540,10 +540,10 @@ export default function Avatar3D({
       const dressMat = buildGarmentMaterial(dressItem, origTopMat);
       const customGlbUrl = dressItem?.modelUrl || dressItem?.model3d?.modelUrl;
 
-      // Calculate dress width/scale to ensure it fully encloses and fits the avatar body with zero exposure on the sides
-      const scaleX = isIndianEthnic ? 1.12 : isFloralOrPuff ? 1.08 : 1.40;
-      const scaleY = isIndianEthnic ? 1.01 : isFloralOrPuff ? 1.005 : 1.01;
-      const scaleZ = isIndianEthnic ? 1.12 : isFloralOrPuff ? 1.08 : 1.22;
+      // Calculate dress scale: the 3D dress geometry now natively wraps 360 degrees around the avatar's torso, waist and hips
+      const scaleX = isIndianEthnic ? 1.05 : isFloralOrPuff ? 1.02 : 1.06;
+      const scaleY = 1.00;
+      const scaleZ = isIndianEthnic ? 1.05 : isFloralOrPuff ? 1.02 : 1.06;
 
       // If a custom cloud-generated GLB URL exists, load and auto-rig it
       if (customGlbUrl && top?.skeleton) {

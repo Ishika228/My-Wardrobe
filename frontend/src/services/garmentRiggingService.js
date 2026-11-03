@@ -216,9 +216,9 @@ export async function loadAndRigGlbGarment(
   // Determine scaling factors to ensure the garment fits the avatar body with full coverage
   const isFloral = glbUrl.includes('floral');
   const isEthnic = glbUrl.includes('saree') || glbUrl.includes('ethnic');
-  const defaultScaleX = isEthnic ? 1.12 : isFloral ? 1.08 : 1.40;
-  const defaultScaleY = isEthnic ? 1.01 : isFloral ? 1.005 : 1.01;
-  const defaultScaleZ = isEthnic ? 1.12 : isFloral ? 1.08 : 1.22;
+  const defaultScaleX = isEthnic ? 1.05 : isFloral ? 1.02 : 1.06;
+  const defaultScaleY = 1.00;
+  const defaultScaleZ = isEthnic ? 1.05 : isFloral ? 1.02 : 1.06;
 
   const sx = scaleConfig?.scaleX ?? (category === 'dress' ? defaultScaleX : 1.025);
   const sy = scaleConfig?.scaleY ?? (category === 'dress' ? defaultScaleY : 1.005);

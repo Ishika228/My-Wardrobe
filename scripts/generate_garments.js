@@ -89,31 +89,50 @@ function createFloralPuffDressGeometry() {
         if (baseY <= bustY) {
           // From waist up to bust
           const t = (baseY - waistY) / (bustY - waistY);
-          rx = 0.118 + (0.137 - 0.118) * Math.sin(t * Math.PI * 0.5);
-          rz = 0.095 + (0.112 - 0.095) * Math.sin(t * Math.PI * 0.5);
-          cz = 0.054 + (0.044 - 0.054) * t;
+          const rx_front = 0.118 + (0.137 - 0.118) * Math.sin(t * Math.PI * 0.5);
+          const rx_side = 0.158 + (0.165 - 0.158) * Math.sin(t * Math.PI * 0.5);
+          const rz_front = 0.095 + (0.112 - 0.095) * Math.sin(t * Math.PI * 0.5);
+          const rz_back = 0.150 + (0.138 - 0.150) * t;
+          const cz_base = 0.054 + (0.044 - 0.054) * t;
 
-          // Front bust gentle cups
+          // Seamless 360-degree wrap:
+          // Front (+Z, sinA > 0) preserves authentic front geometry & bust shape
+          // Sides (cosA near ±1) widen to rx_side to fully enclose side ribs and waist
+          // Back (-Z, sinA < 0) extends to rz_back to fully enclose spine and upper back
+          const eff_cz = cz_base - (1.0 - sinA) * 0.022;
+          let rz_val = sinA >= 0 ? rz_front : rz_back;
           if (sinA > 0.1) {
-            rz += sinA * 0.010 * Math.sin(t * Math.PI);
+            rz_val += sinA * 0.010 * Math.sin(t * Math.PI);
           }
+          rx = rx_front + (rx_side - rx_front) * Math.abs(cosA);
+          rz = rz_val;
+          cz = eff_cz;
         } else {
           // Upper chest, square neckline and shoulder straps
           const t = (baseY - bustY) / (strapTopY - bustY);
-          rx = 0.137 + (0.130 - 0.137) * t;
-          rz = 0.112 + (0.085 - 0.112) * t;
-          cz = 0.044 + (0.005 - 0.044) * t;
+          const rx_front = 0.137 + (0.130 - 0.137) * t;
+          const rx_side = 0.165 + (0.150 - 0.165) * t;
+          const rz_front = 0.112 + (0.085 - 0.112) * t;
+          const rz_back = 0.138 + (0.100 - 0.138) * t;
+          const cz_base = 0.044 + (0.005 - 0.044) * t;
+
+          const eff_cz = cz_base - (1.0 - sinA) * 0.018;
+          let rz_val = sinA >= 0 ? rz_front : rz_back;
 
           // Square neckline cutout in front: sinA > 0.35 (front center |X| < 0.078)
-          const isFrontCenter = sinA > 0.35 && Math.abs(cosA * rx) < 0.078;
+          const isFrontCenter = sinA > 0.35 && Math.abs(cosA * rx_front) < 0.078;
           if (isFrontCenter) {
             // Drop front neckline to upper bust level (1.365)
             y = Math.min(y, bustY + 0.025 + (1 - sinA) * 0.03);
-            rz *= 0.94;
+            rz_val *= 0.94;
           } else if (sinA < -0.35) {
             // Back neck: gently dips to 1.415
             y = Math.min(y, 1.415 + (1 + sinA) * 0.02);
           }
+
+          rx = rx_front + (rx_side - rx_front) * Math.abs(cosA);
+          rz = rz_val;
+          cz = eff_cz;
         }
 
         const posX = cosA * rx;
@@ -357,23 +376,28 @@ function createFloralPuffDressGeometry() {
       const t = (topY - y) / (topY - botY); // 0 at top, 1 at bottom
 
       // Exponential flare
-      const rx = topRx + (botRx - topRx) * Math.pow(t, 1.25);
-      const rz = topRz + (botRz - topRz) * Math.pow(t, 1.20);
-      const cz = topCz + (botCz - topCz) * t;
+      const rx_front = topRx + (botRx - topRx) * Math.pow(t, 1.25);
+      const rx_side = (topRx + 0.038) + ((botRx + 0.035) - (topRx + 0.038)) * Math.pow(t, 1.25);
+      const rz_front = topRz + (botRz - topRz) * Math.pow(t, 1.20);
+      const rz_back = (topRz + 0.055) + ((botRz + 0.045) - (topRz + 0.055)) * Math.pow(t, 1.20);
+      const cz_base = topCz + (botCz - topCz) * t;
 
       for (let ix = 0; ix <= radialSegs; ix++) {
         const u = ix / radialSegs;
         const angle = u * Math.PI * 2;
+        const cosA = Math.cos(angle); // Z direction (> 0 front, < 0 back)
+        const sinA = Math.sin(angle); // X direction
 
         // Physical wavy ruffles (flutes) at the bottom hem of each tier
         const waveStrength = Math.pow(t, 1.4);
         const wave = Math.sin(angle * pleatCount) * pleatDepth * waveStrength;
 
-        const curRx = rx + wave;
-        const curRz = rz + wave;
+        const eff_cz = cz_base - (1.0 - cosA) * 0.022;
+        const curRz = (cosA >= 0 ? rz_front : rz_back) + wave;
+        const curRx = (rx_front + (rx_side - rx_front) * Math.abs(sinA)) + wave;
 
-        const px = Math.sin(angle) * curRx;
-        const pz = Math.cos(angle) * curRz + cz;
+        const px = sinA * curRx;
+        const pz = cosA * curRz + eff_cz;
         const py = y;
 
         positions.push(px, py, pz);
@@ -464,7 +488,7 @@ function createFloralPuffDressGeometry() {
 // ─────────────────────────────────────────────────────────────────────────────
 // 2. SLIP DRESS & INDIAN BANARASI SILK SAREE
 // ─────────────────────────────────────────────────────────────────────────────
-function createSlipDressGeometry({ hemY = 0.55, hemRx = 0.285, hemRz = 0.245, pleatCount = 12, pleatDepth = 0.015 }) {
+function createSlipDressGeometry({ hemY = 0.55, hemRx = 0.330, hemRz = 0.265, pleatCount = 12, pleatDepth = 0.015 }) {
   const positions = [], uvs = [], skinIndices = [], skinWeights = [], indices = [];
   const ySegs = 40;
   const radialSegs = 48;
@@ -479,18 +503,18 @@ function createSlipDressGeometry({ hemY = 0.55, hemRx = 0.285, hemRz = 0.245, pl
     let rx, rz, cz = 0.025;
     if (y < waistY) {
       const t = (waistY - y) / (waistY - hemY);
-      rx = 0.165 + (hemRx - 0.165) * Math.pow(t, 1.25);
-      rz = 0.118 + (hemRz - 0.118) * Math.pow(t, 1.20);
+      rx = 0.180 + (hemRx - 0.180) * Math.pow(t, 1.25);
+      rz = 0.135 + (hemRz - 0.135) * Math.pow(t, 1.20);
       cz = 0.025 * (1 - t) + 0.015 * t;
     } else if (y < bustY) {
       const t = (y - waistY) / (bustY - waistY);
-      rx = 0.165 + (0.180 - 0.165) * Math.sin(t * Math.PI * 0.5);
-      rz = 0.118 + (0.140 - 0.118) * Math.sin(t * Math.PI * 0.5);
+      rx = 0.180 + (0.195 - 0.180) * Math.sin(t * Math.PI * 0.5);
+      rz = 0.135 + (0.150 - 0.135) * Math.sin(t * Math.PI * 0.5);
       cz = 0.025 + 0.015 * t;
     } else {
       const t = (y - bustY) / (topY - bustY);
-      rx = 0.180 - 0.045 * t;
-      rz = 0.140 - 0.055 * t;
+      rx = 0.195 - 0.045 * t;
+      rz = 0.150 - 0.055 * t;
       cz = 0.040 - 0.020 * t;
     }
 
