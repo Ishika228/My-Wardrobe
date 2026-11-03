@@ -1,6 +1,6 @@
 import React, { useRef, useMemo, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
-import { useGLTF, useAnimations } from '@react-three/drei';
+import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { loadAndRigGlbGarment, fitAndRigStaticGarment } from '../services/garmentRiggingService.js';
@@ -162,47 +162,13 @@ export default function Avatar3D({
   const groupRef = useRef();
   const activeDressRef = useRef(null);
 
-  // Load avatar and authentic 3D garment GLB assets & mocap animations
+  // Load avatar and authentic 3D garment GLB assets
   const avatarGltf = useGLTF('/models/female_avatar.glb');
-  const animsGltf = useGLTF('/models/animations.glb');
   const dressFloralGltf = useGLTF('/models/garments/dress_floral_puff.glb');
   const dressSlipGltf = useGLTF('/models/garments/dress_slip.glb');
   const dressSareeGltf = useGLTF('/models/garments/dress_saree.glb');
   const topCasualGltf = useGLTF('/models/garments/top_casual.glb');
   const trouserJeansGltf = useGLTF('/models/garments/trouser_jeans.glb');
-
-  // Retarget Mixamo animation tracks to match ReadyPlayerMe avatar bones
-  // CRITICAL FIX: Mixamo animations contain translation tracks in centimeters (Hips Y=102.83, Spine Y=10.18).
-  // Applying position tracks directly on a meter-scale ReadyPlayerMe skeleton shoots the bones 100 meters into the sky!
-  // By discarding position and scale tracks and keeping pure rotation (quaternion) tracks,
-  // the avatar preserves its exact anatomical ReadyPlayerMe bone lengths and stands grounded on the showroom floor.
-  const retargetedAnimations = useMemo(() => {
-    if (!animsGltf?.animations || animsGltf.animations.length === 0) return [];
-    return animsGltf.animations.map((clip) => {
-      const cloned = clip.clone();
-      const cleanTracks = [];
-
-      cloned.tracks.forEach((track) => {
-        const cleanName = track.name.replace(/^mixamorig:?/, '');
-
-        // 1. Discard scale tracks
-        if (cleanName.endsWith('.scale')) return;
-
-        // 2. Discard all translation/position tracks (humanoid bones have fixed lengths; only rotations drive poses)
-        if (cleanName.endsWith('.position')) return;
-
-        // 3. Keep all rotation/quaternion tracks
-        track.name = cleanName;
-        cleanTracks.push(track);
-      });
-
-      cloned.tracks = cleanTracks;
-      return cloned;
-    });
-  }, [animsGltf]);
-
-  // Set up animations on root group
-  const { actions } = useAnimations(retargetedAnimations, groupRef);
 
   // Extract authentic 3D garment geometries
   const garmentGeometries = useMemo(() => {
@@ -229,24 +195,25 @@ export default function Avatar3D({
 
   const meshesRef = useRef({
     top: null, bottom: null, shoes: null, body: null, head: null, hair: null,
-    eyes: [], glasses: null, bones: {},
+    eyes: [], glasses: null, bones: {}, restQuaternions: {},
     origTopMat: null, origBottomMat: null, origShoesMat: null,
   });
 
-  // Clone avatar scene safely with SkeletonUtils
+  // Clone avatar scene safely with SkeletonUtils and capture native rest quaternions
   const avatarScene = useMemo(() => {
     if (!avatarGltf?.scene) return null;
     const clone = SkeletonUtils.clone(avatarGltf.scene);
 
     const disc = {
       top: null, bottom: null, shoes: null, body: null, head: null, hair: null,
-      eyes: [], glasses: null, bones: {},
+      eyes: [], glasses: null, bones: {}, restQuaternions: {},
       origTopMat: null, origBottomMat: null, origShoesMat: null,
     };
 
     clone.traverse((child) => {
       if (child.isBone) {
         disc.bones[child.name] = child;
+        disc.restQuaternions[child.name] = child.quaternion.clone();
       }
 
       if (child.isMesh || child.isSkinnedMesh) {
@@ -307,42 +274,81 @@ export default function Avatar3D({
     return clone;
   }, [avatarGltf]);
 
-  // ── Manage Idle vs Walk Animation transitions via Mixamo mocap ────────────
-  useEffect(() => {
-    if (!actions) return;
-
-    const idleAction = actions['idle'];
-    const walkAction = actions['walk'];
-
-    if (isWalking) {
-      if (idleAction) idleAction.fadeOut(0.25);
-      if (walkAction) {
-        walkAction.reset().fadeIn(0.25).play();
-        walkAction.timeScale = 1.05;
-      }
-    } else {
-      if (walkAction) walkAction.fadeOut(0.25);
-      if (idleAction) {
-        idleAction.reset().fadeIn(0.25).play();
-      }
-    }
-  }, [isWalking, actions]);
-
-  // ── Procedural Eye Blinking & Natural Breathing ───────────────────────────
+  // ── Natural Human Standing Posture & Walking Locomotion ────────────────────
+  const walkPhaseRef = useRef(0);
   const blinkTimerRef = useRef(0);
   const nextBlinkIntervalRef = useRef(3.5);
 
   useFrame((state, delta) => {
-    const { head, bones } = meshesRef.current;
+    const { head, bones, restQuaternions } = meshesRef.current;
+    if (!bones || !restQuaternions || Object.keys(bones).length === 0) return;
     const t = state.clock.getElapsedTime();
 
-    // 1. Keep Hips firmly anchored at natural standing height with organic breathing (±3 mm)
-    if (bones?.['Hips']) {
+    const setBoneRel = (boneName, ax, ay, az, angle) => {
+      const bone = bones[boneName];
+      const rest = restQuaternions[boneName];
+      if (!bone || !rest) return;
+      const deltaQ = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(ax, ay, az), angle);
+      bone.quaternion.copy(rest).multiply(deltaQ);
+    };
+
+    if (isWalking) {
+      // Fluid walking locomotion
+      walkPhaseRef.current += delta * 7.5;
+      const p = walkPhaseRef.current;
+      const strideL = Math.sin(p) * 0.32;
+      const strideR = Math.sin(p + Math.PI) * 0.32;
+      const kneeL = Math.max(0, -Math.sin(p)) * 0.45;
+      const kneeR = Math.max(0, -Math.sin(p + Math.PI)) * 0.45;
+
+      // Leg stride along local X pitch axis (legs swing forward and back, staying down!)
+      setBoneRel('LeftUpLeg', 1, 0, 0, strideL);
+      setBoneRel('RightUpLeg', 1, 0, 0, strideR);
+      setBoneRel('LeftLeg', 1, 0, 0, -kneeL);
+      setBoneRel('RightLeg', 1, 0, 0, -kneeR);
+
+      // Arm swing in counter-cadence with legs
+      setBoneRel('LeftArm', 1, 0, 0, -0.55 + strideR * 0.4);
+      setBoneRel('RightArm', 1, 0, 0, -0.55 + strideL * 0.4);
+      setBoneRel('LeftForeArm', 1, 0, 0, -0.15);
+      setBoneRel('RightForeArm', 1, 0, 0, -0.15);
+
+      if (bones['Hips']) {
+        const bob = Math.abs(Math.sin(p)) * 0.015;
+        bones['Hips'].position.set(0, 1.03696 + bob, 0.0404);
+        setBoneRel('Hips', 0, 1, 0, Math.sin(p) * 0.03);
+      }
+    } else {
+      // Natural standing model posture: straight legs grounded on floor, arms relaxed down at sides
+      walkPhaseRef.current = THREE.MathUtils.lerp(walkPhaseRef.current, 0, 0.1);
       const breathe = Math.sin(t * 1.8) * 0.003;
-      bones['Hips'].position.set(0, 1.03696 + breathe, 0.0404);
+      const sway = Math.sin(t * 0.9) * 0.008;
+
+      // Legs stand straight down on the floor
+      setBoneRel('LeftUpLeg', 1, 0, 0, 0);
+      setBoneRel('RightUpLeg', 1, 0, 0, 0);
+      setBoneRel('LeftLeg', 1, 0, 0, 0);
+      setBoneRel('RightLeg', 1, 0, 0, 0);
+
+      // Arms relaxed naturally down along the torso
+      setBoneRel('LeftArm', 1, 0, 0, -0.55 + sway * 0.4);
+      setBoneRel('RightArm', 1, 0, 0, -0.55 - sway * 0.4);
+      setBoneRel('LeftForeArm', 1, 0, 0, -0.12);
+      setBoneRel('RightForeArm', 1, 0, 0, -0.12);
+
+      // Subtle chest & spine breathing
+      setBoneRel('Spine', 1, 0, 0, breathe * 2.0);
+      setBoneRel('Spine1', 1, 0, 0, breathe * 1.5);
+      setBoneRel('Spine2', 1, 0, 0, breathe * 1.0);
+      setBoneRel('Neck', 0, 1, 0, Math.sin(t * 0.6) * 0.02);
+
+      if (bones['Hips']) {
+        bones['Hips'].position.set(0, 1.03696 + breathe, 0.0404);
+        setBoneRel('Hips', 0, 0, 1, sway * 0.5);
+      }
     }
 
-    // 2. Procedural Eye Blinking & Facial Micro-expressions
+    // Procedural Eye Blinking & Facial Blendshapes
     if (head?.morphTargetDictionary && head?.morphTargetInfluences) {
       const dict = head.morphTargetDictionary;
       const infl = head.morphTargetInfluences;
@@ -600,7 +606,6 @@ export default function Avatar3D({
 
 // Preload avatar and real 3D garment GLB assets
 useGLTF.preload('/models/female_avatar.glb');
-useGLTF.preload('/models/animations.glb');
 useGLTF.preload('/models/garments/dress_floral_puff.glb');
 useGLTF.preload('/models/garments/dress_slip.glb');
 useGLTF.preload('/models/garments/dress_saree.glb');
