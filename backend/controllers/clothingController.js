@@ -136,6 +136,7 @@ export const addClothingItem = async (req, res, next) => {
         ? style.map((st) => String(st).trim()).filter(Boolean)
         : [],
       imageUrl: imageUrl && typeof imageUrl === 'string' ? imageUrl.trim() : null,
+      model3d: req.body.model3d || undefined,
       isFavorite: Boolean(isFavorite),
     });
 

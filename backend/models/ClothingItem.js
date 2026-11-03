@@ -113,6 +113,19 @@ const clothingItemSchema = new mongoose.Schema(
       analyzedAt: { type: Date },
       isMock: { type: Boolean, default: false },
     },
+    model3d: {
+      modelUrl: { type: String, trim: true },
+      taskId: { type: String, trim: true },
+      status: {
+        type: String,
+        enum: ['none', 'queued', 'running', 'success', 'failed'],
+        default: 'none',
+      },
+      progress: { type: Number, default: 0 },
+      source: { type: String, default: 'tripo3d' },
+      generatedAt: { type: Date },
+      errorMessage: { type: String, trim: true },
+    },
     manuallyEditedFields: {
       type: [String],
       default: [],

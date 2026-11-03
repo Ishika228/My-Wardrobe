@@ -10,6 +10,7 @@ import userRoutes from './routes/userRoutes.js';
 import clothingRoutes from './routes/clothingRoutes.js';
 import outfitRoutes from './routes/outfitRoutes.js';
 import recommendationRoutes from './routes/recommendationRoutes.js';
+import garmentRoutes from './routes/garmentRoutes.js';
 import { notFoundHandler, errorHandler } from './middleware/errorMiddleware.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -47,7 +48,7 @@ app.use(
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Serve static uploads directory safely
+// Serve static uploads directory safely (includes uploads/clothing and uploads/models)
 const uploadsPath = path.resolve('uploads');
 app.use(
   '/uploads',
@@ -64,6 +65,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/clothes', clothingRoutes);
 app.use('/api/outfits', outfitRoutes);
 app.use('/api/recommendations', recommendationRoutes);
+app.use('/api/garments', garmentRoutes);
 
 // 404 Route handling
 app.use(notFoundHandler);
