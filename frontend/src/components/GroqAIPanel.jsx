@@ -4,7 +4,8 @@ import {
   Sun, Calendar, CheckCircle, AlertCircle, Loader, Camera,
   RefreshCw, ChevronRight, Star, Database, Wand2, Compass
 } from 'lucide-react';
-import { getRAGOutfitRecommendations } from '../services/api.js';
+import { getRAGOutfitRecommendations, searchClothingByImage } from '../services/api.js';
+import { analyzeClothingImage } from '../services/aiService.js';
 
 const API_BASE = 'http://localhost:5000/api';
 
@@ -12,10 +13,10 @@ const API_BASE = 'http://localhost:5000/api';
 function Badge({ color = 'purple', children }) {
   const map = {
     purple: { bg: 'rgba(139,92,246,0.15)', text: '#c4b5fd', border: 'rgba(139,92,246,0.3)' },
-    green:  { bg: 'rgba(16,185,129,0.15)',  text: '#6ee7b7', border: 'rgba(16,185,129,0.3)' },
-    blue:   { bg: 'rgba(59,130,246,0.15)',  text: '#93c5fd', border: 'rgba(59,130,246,0.3)' },
-    amber:  { bg: 'rgba(245,158,11,0.15)', text: '#fcd34d', border: 'rgba(245,158,11,0.3)' },
-    pink:   { bg: 'rgba(236,72,153,0.15)', text: '#f9a8d4', border: 'rgba(236,72,153,0.3)' },
+    green: { bg: 'rgba(16,185,129,0.15)', text: '#6ee7b7', border: 'rgba(16,185,129,0.3)' },
+    blue: { bg: 'rgba(59,130,246,0.15)', text: '#93c5fd', border: 'rgba(59,130,246,0.3)' },
+    amber: { bg: 'rgba(245,158,11,0.15)', text: '#fcd34d', border: 'rgba(245,158,11,0.3)' },
+    pink: { bg: 'rgba(236,72,153,0.15)', text: '#f9a8d4', border: 'rgba(236,72,153,0.3)' },
   };
   const c = map[color] || map.purple;
   return (
@@ -67,6 +68,7 @@ export default function GroqAIPanel({
   isOpen,
   onClose,
   onApplyOutfitToAvatar,
+  onTryOnItem,
   mongoClothes = []
 }) {
   const [tab, setTab] = useState('recommend'); // 'recommend' | 'scan'
@@ -80,11 +82,22 @@ export default function GroqAIPanel({
 
   // RAG Recommender State
   const [userQuery, setUserQuery] = useState('');
-  const [recOccasion, setRecOccasion] = useState('Casual');
+  const [recCategory, setRecCategory] = useState('All');
+  const [recColor, setRecColor] = useState('All');
+  const [recOccasion, setRecOccasion] = useState('All');
   const [recSeason, setRecSeason] = useState('All');
   const [ragResult, setRagResult] = useState(null);
   const [recLoading, setRecLoading] = useState(false);
   const [recError, setRecError] = useState(null);
+  const [wearingItemId, setWearingItemId] = useState(null);
+
+  const handleResetFilters = () => {
+    setUserQuery('');
+    setRecCategory('All');
+    setRecColor('All');
+    setRecOccasion('All');
+    setRecSeason('All');
+  };
 
   const fileInputRef = useRef();
 
@@ -122,25 +135,43 @@ export default function GroqAIPanel({
     setAnalysis(null);
 
     try {
-      const formData = new FormData();
-      formData.append('file', imageFile);
-
-      // Attempt backend scan
-      const res = await fetch(`${API_BASE}/clothes/analyze`, {
-        method: 'POST',
-        body: formData
-      });
-
-      if (!res.ok) {
-        throw new Error(`Analysis status: ${res.status}. Server is active.`);
+      // Uses 3-tier authentic visual inspection: OpenCV FastAPI -> Express Backend -> Canvas Pixel Engine
+      const data = await analyzeClothingImage(imageFile);
+      if (!data) {
+        throw new Error('Analysis could not inspect the garment.');
       }
-
-      const data = await res.json();
       setAnalysis(data.data || data);
     } catch (err) {
       setError(err.message || 'Image analysis failed.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleWearScannedItem = () => {
+    if (!analysis) return;
+    const cat = (analysis.category || 'Top').toLowerCase();
+    let categoryKey = 'tops';
+    if (cat.includes('jean') || cat.includes('pant') || cat.includes('trouser') || cat.includes('skirt') || cat.includes('bottom')) categoryKey = 'trousers';
+    else if (cat.includes('dress') || cat.includes('saree') || cat.includes('kurti') || cat.includes('frock')) categoryKey = 'dresses';
+    else if (cat.includes('jacket') || cat.includes('coat') || cat.includes('blazer') || cat.includes('outerwear')) categoryKey = 'outerwear';
+    else if (cat.includes('shoe') || cat.includes('boot') || cat.includes('sneaker') || cat.includes('heel') || cat.includes('footwear')) categoryKey = 'shoes';
+
+    const hex = analysis.colour?.dominant_hex || analysis.color_dominant?.hex || analysis.primaryColor || '#dc2626';
+
+    const scannedPiece = {
+      id: `scanned-${Date.now()}`,
+      name: `${analysis.colour?.dominant || analysis.color || 'Custom'} ${analysis.category || 'Garment'}`,
+      category: categoryKey,
+      primaryColor: hex,
+      colors: [{ name: analysis.colour?.dominant || 'Detected', hex }],
+      image: imagePreview || null,
+      garmentType: categoryKey === 'dresses' ? 'dress' : categoryKey === 'trousers' ? 'bottom' : categoryKey === 'shoes' ? 'shoes' : 'top',
+      silhouette: categoryKey === 'dresses' ? 'slip-dress' : 'custom'
+    };
+
+    if (onTryOnItem) {
+      onTryOnItem(scannedPiece);
     }
   };
 
@@ -156,8 +187,11 @@ export default function GroqAIPanel({
       const data = await getRAGOutfitRecommendations({
         query: queryToSend,
         preferences: {
+          category: recCategory === 'All' ? null : recCategory,
+          color: recColor === 'All' ? null : recColor,
           occasion: recOccasion === 'All' ? null : recOccasion,
-          weather: recSeason === 'All' ? null : recSeason
+          weather: recSeason === 'All' ? null : recSeason,
+          season: recSeason === 'All' ? null : recSeason
         }
       });
 
@@ -173,7 +207,114 @@ export default function GroqAIPanel({
     }
   };
 
-  // ── 3. Apply recommended outfit to 3D Avatar in VR ──────────────────────────
+  const handleSearchSimilarInWardrobe = async () => {
+    if (!imageFile) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await searchClothingByImage(imageFile);
+      if (data && data.success) {
+        setRagResult(data);
+        setTab('recommend');
+      } else {
+        throw new Error(data?.message || 'Visual search could not find matches.');
+      }
+    } catch (err) {
+      setError(err.message || 'Image search failed.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ── 3. Apply single recommended item to 3D Avatar ──────────────────────────
+  const handleWearSinglePiece = (piece) => {
+    setWearingItemId(piece._id || piece.id);
+    const cat = (piece.category || '').toLowerCase();
+    const subCat = (piece.subCategory || piece.silhouette || '').toLowerCase();
+    const name = (piece.name || '').toLowerCase();
+
+    let category = 'tops';
+    if (['shirt', 't-shirt', 'blouse', 'top', 'sweater', 'hoodie', 'kurti'].includes(cat)) {
+      category = 'tops';
+    } else if (['jeans', 'trousers', 'pants', 'skirt', 'bottom'].includes(cat)) {
+      category = 'trousers';
+    } else if (
+      ['dress', 'dresses', 'gown', 'saree', 'anarkali', 'lehenga'].includes(cat) ||
+      subCat.includes('frock') ||
+      name.includes('frock') ||
+      subCat.includes('saree') ||
+      subCat.includes('anarkali')
+    ) {
+      category = 'dresses';
+    } else if (['shoes', 'sneakers', 'boots', 'heels', 'jutti'].includes(cat) || subCat.includes('jutti')) {
+      category = 'shoes';
+    } else if (['jacket', 'coat', 'blazer', 'outerwear'].includes(cat)) {
+      category = 'outerwear';
+    } else if (['accessories', 'bag', 'jewelry'].includes(cat)) {
+      category = 'accessories';
+    }
+
+    const COLOR_HEX_MAP = {
+      red: '#dc2626',
+      crimson: '#dc2626',
+      ruby: '#dc2626',
+      burgundy: '#831843',
+      pink: '#f472b6',
+      blue: '#2563eb',
+      navy: '#1e3a8a',
+      black: '#222222',
+      white: '#ffffff',
+      grey: '#888888',
+      gray: '#888888',
+      gold: '#d4af37',
+      yellow: '#eab308',
+      emerald: '#059669',
+      green: '#059669',
+      beige: '#d2b48c'
+    };
+    let colorHex = piece.primaryColor || '#ec4899';
+    const cStr = typeof piece.color === 'string' ? piece.color.toLowerCase().trim() : '';
+    if (piece.color && typeof piece.color === 'object' && piece.color.primary) {
+      colorHex = piece.color.primary;
+    } else if (cStr.startsWith('#')) {
+      colorHex = cStr;
+    } else if (COLOR_HEX_MAP[cStr]) {
+      colorHex = COLOR_HEX_MAP[cStr];
+    }
+
+    let image = piece.imageUrl || piece.image || null;
+    if (image && typeof image === 'string' && image.startsWith('/uploads')) {
+      image = 'http://localhost:5000' + image;
+    }
+
+    const payload = {
+      id: piece._id || piece.id || String(Date.now()),
+      name: piece.name,
+      category,
+      primaryColor: colorHex,
+      material: piece.material || 'Silk & Chiffon',
+      silhouette: subCat || cat || 'dress',
+      image,
+      imageUrl: image,
+      isEcommerce: Boolean(piece.isEcommerce)
+    };
+
+    if (onTryOnItem) {
+      onTryOnItem(payload);
+    } else if (onApplyOutfitToAvatar) {
+      if (category === 'dresses') {
+        onApplyOutfitToAvatar({ dress: payload, top: null, bottom: null });
+      } else if (category === 'tops') {
+        onApplyOutfitToAvatar({ top: payload, dress: null });
+      } else if (category === 'trousers') {
+        onApplyOutfitToAvatar({ bottom: payload, dress: null });
+      }
+    }
+
+    setTimeout(() => setWearingItemId(null), 2000);
+  };
+
+  // ── 4. Apply recommended outfit to 3D Avatar in VR ──────────────────────────
   const handleApplyToVR = (outfit) => {
     if (!onApplyOutfitToAvatar || !outfit.clothingItems) return;
 
@@ -185,13 +326,14 @@ export default function GroqAIPanel({
       const subCat = (item.subCategory || '').toLowerCase();
 
       // Normalize color hex
-      let colorHex = '#ffffff';
+      let colorHex = item.primaryColor || '#ffffff';
       if (item.color) {
         if (typeof item.color === 'object') colorHex = item.color.primary || '#ffffff';
         else if (item.color.startsWith('#')) colorHex = item.color;
         else {
           const c = item.color.toLowerCase();
-          if (c === 'black') colorHex = '#222222';
+          if (c === 'pink') colorHex = '#f472b6';
+          else if (c === 'black') colorHex = '#222222';
           else if (c === 'white') colorHex = '#ffffff';
           else if (c === 'navy' || c === 'blue') colorHex = '#1e3a8a';
           else if (c === 'emerald' || c === 'green') colorHex = '#065f46';
@@ -201,16 +343,22 @@ export default function GroqAIPanel({
         }
       }
 
+      let image = item.imageUrl || item.image || null;
+      if (image && typeof image === 'string' && image.startsWith('/uploads')) {
+        image = 'http://localhost:5000' + image;
+      }
+
       const formatted = {
         id: item._id,
         name: item.name,
         category: cat,
         primaryColor: colorHex,
         material: item.material,
-        silhouette: subCat || cat
+        silhouette: subCat || cat,
+        image
       };
 
-      if (cat === 'dress' || subCat.includes('saree') || subCat.includes('anarkali') || subCat.includes('kurti')) {
+      if (cat === 'dress' || subCat.includes('saree') || subCat.includes('anarkali') || subCat.includes('kurti') || subCat.includes('frock') || item.name.toLowerCase().includes('frock')) {
         dress = formatted;
       } else if (cat.includes('jacket') || cat.includes('coat') || cat.includes('blazer')) {
         outerwear = formatted;
@@ -224,7 +372,6 @@ export default function GroqAIPanel({
     });
 
     onApplyOutfitToAvatar({ top, bottom, dress, shoes, outerwear });
-    onClose();
   };
 
   // ── Styles ──────────────────────────────────────────────────────────────────
@@ -258,7 +405,7 @@ export default function GroqAIPanel({
   return (
     <div style={overlay} onClick={onClose}>
       <div style={panel} onClick={(e) => e.stopPropagation()}>
-        
+
         {/* Top Header */}
         <div
           style={{
@@ -400,7 +547,27 @@ export default function GroqAIPanel({
                   <input
                     type="text"
                     value={userQuery}
-                    onChange={(e) => setUserQuery(e.target.value)}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setUserQuery(val);
+                      const lower = val.toLowerCase();
+                      if (lower.includes('frock')) setRecCategory('Frock');
+                      else if (lower.includes('saree') || lower.includes('sari')) setRecCategory('Saree');
+                      else if (lower.includes('anarkali')) setRecCategory('Traditional');
+                      else if (lower.includes('dress')) setRecCategory('Dress');
+                      else if (lower.includes('jeans')) setRecCategory('Jeans');
+                      else if (lower.includes('shirt')) setRecCategory('Shirt');
+                      else if (lower.includes('top')) setRecCategory('Top');
+                      else if (lower.includes('jacket') || lower.includes('coat')) setRecCategory('Jacket');
+                      else if (lower.includes('shoes') || lower.includes('sneaker')) setRecCategory('Shoes');
+
+                      if (lower.includes('white')) setRecColor('White');
+                      else if (lower.includes('red') || lower.includes('crimson')) setRecColor('Red');
+                      else if (lower.includes('pink') || lower.includes('rose')) setRecColor('Pink');
+                      else if (lower.includes('black')) setRecColor('Black');
+                      else if (lower.includes('blue') || lower.includes('navy')) setRecColor('Blue');
+                      else if (lower.includes('green') || lower.includes('emerald')) setRecColor('Green');
+                    }}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') handleExecuteRAG();
                     }}
@@ -479,10 +646,58 @@ export default function GroqAIPanel({
                 </div>
               </div>
 
-              {/* Filter controls */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '16px' }}>
+              {/* Filter controls: Category, Color, Occasion, Season */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '10px' }}>
                 <div>
-                  <label style={{ fontSize: '11px', color: '#a78bfa', display: 'block', marginBottom: '4px' }}>
+                  <label style={{ fontSize: '10px', fontWeight: 700, color: '#c4b5fd', textTransform: 'uppercase', display: 'block', marginBottom: '3px' }}>
+                    Category
+                  </label>
+                  <select
+                    value={recCategory}
+                    onChange={(e) => setRecCategory(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '7px 9px',
+                      borderRadius: '8px',
+                      background: 'rgba(255,255,255,0.06)',
+                      border: '1px solid rgba(139,92,246,0.3)',
+                      color: 'white',
+                      fontSize: '11px',
+                      outline: 'none'
+                    }}
+                  >
+                    {['All', 'Frock', 'Saree', 'Dress', 'Jeans', 'Shirt', 'Top', 'T-Shirt', 'Jacket', 'Shoes', 'Traditional'].map((c) => (
+                      <option key={c} value={c} style={{ background: '#1a1025' }}>{c}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '10px', fontWeight: 700, color: '#c4b5fd', textTransform: 'uppercase', display: 'block', marginBottom: '3px' }}>
+                    Color
+                  </label>
+                  <select
+                    value={recColor}
+                    onChange={(e) => setRecColor(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '7px 9px',
+                      borderRadius: '8px',
+                      background: 'rgba(255,255,255,0.06)',
+                      border: '1px solid rgba(139,92,246,0.3)',
+                      color: 'white',
+                      fontSize: '11px',
+                      outline: 'none'
+                    }}
+                  >
+                    {['All', 'Red', 'Pink', 'Blue', 'Black', 'White', 'Green', 'Yellow', 'Beige', 'Grey'].map((c) => (
+                      <option key={c} value={c} style={{ background: '#1a1025' }}>{c}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '10px', fontWeight: 700, color: '#c4b5fd', textTransform: 'uppercase', display: 'block', marginBottom: '3px' }}>
                     Occasion
                   </label>
                   <select
@@ -490,46 +705,69 @@ export default function GroqAIPanel({
                     onChange={(e) => setRecOccasion(e.target.value)}
                     style={{
                       width: '100%',
-                      padding: '7px 10px',
+                      padding: '7px 9px',
                       borderRadius: '8px',
                       background: 'rgba(255,255,255,0.06)',
-                      border: '1px solid rgba(255,255,255,0.1)',
+                      border: '1px solid rgba(139,92,246,0.3)',
                       color: 'white',
-                      fontSize: '11px'
+                      fontSize: '11px',
+                      outline: 'none'
                     }}
                   >
-                    {['All', 'Casual', 'Formal', 'Party', 'Dinner', 'College'].map((o) => (
-                      <option key={o} value={o} style={{ background: '#1a1025' }}>
-                        {o}
-                      </option>
+                    {['All', 'Casual', 'Formal', 'Party', 'Wedding', 'Festival', 'College', 'Travel'].map((o) => (
+                      <option key={o} value={o} style={{ background: '#1a1025' }}>{o}</option>
                     ))}
                   </select>
                 </div>
+
                 <div>
-                  <label style={{ fontSize: '11px', color: '#a78bfa', display: 'block', marginBottom: '4px' }}>
-                    Season / Weather
+                  <label style={{ fontSize: '10px', fontWeight: 700, color: '#c4b5fd', textTransform: 'uppercase', display: 'block', marginBottom: '3px' }}>
+                    Season
                   </label>
                   <select
                     value={recSeason}
                     onChange={(e) => setRecSeason(e.target.value)}
                     style={{
                       width: '100%',
-                      padding: '7px 10px',
+                      padding: '7px 9px',
                       borderRadius: '8px',
                       background: 'rgba(255,255,255,0.06)',
-                      border: '1px solid rgba(255,255,255,0.1)',
+                      border: '1px solid rgba(139,92,246,0.3)',
                       color: 'white',
-                      fontSize: '11px'
+                      fontSize: '11px',
+                      outline: 'none'
                     }}
                   >
-                    {['All', 'Winter', 'Summer', 'Spring', 'Autumn', 'Monsoon'].map((s) => (
-                      <option key={s} value={s} style={{ background: '#1a1025' }}>
-                        {s}
-                      </option>
+                    {['All', 'Summer', 'Winter', 'Spring', 'Autumn', 'Monsoon'].map((s) => (
+                      <option key={s} value={s} style={{ background: '#1a1025' }}>{s}</option>
                     ))}
                   </select>
                 </div>
               </div>
+
+              {/* Active Filter Clear & Execute Bar */}
+              {(recCategory !== 'All' || recColor !== 'All' || recOccasion !== 'All' || recSeason !== 'All' || userQuery) && (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+                  <span style={{ fontSize: '10px', color: '#a78bfa' }}>
+                    Active filters: {[recCategory !== 'All' && recCategory, recColor !== 'All' && recColor, recOccasion !== 'All' && recOccasion, recSeason !== 'All' && recSeason].filter(Boolean).join(', ') || 'Search Text'}
+                  </span>
+                  <button
+                    onClick={handleResetFilters}
+                    style={{
+                      padding: '3px 8px',
+                      borderRadius: '6px',
+                      background: 'rgba(239,68,68,0.15)',
+                      border: '1px solid rgba(239,68,68,0.3)',
+                      color: '#fca5a5',
+                      fontSize: '10px',
+                      cursor: 'pointer',
+                      fontWeight: 600
+                    }}
+                  >
+                    Reset Filters
+                  </button>
+                </div>
+              )}
 
               {/* Loading State */}
               {recLoading && (
@@ -558,7 +796,7 @@ export default function GroqAIPanel({
                     Executing RAG Pipeline…
                   </p>
                   <p style={{ margin: 0, fontSize: '11px', color: '#8b6fb5' }}>
-                    Retrieving MongoDB wardrobe → Analyzing color harmonies → Generating looks
+                    Retrieving MongoDB wardrobe → Disambiguating categories → Generating looks
                   </p>
                 </div>
               )}
@@ -582,200 +820,556 @@ export default function GroqAIPanel({
               )}
 
               {/* RAG Results Display */}
-              {ragResult && ragResult.recommendations && (
+              {ragResult && (
                 <div>
-                  {/* RAG Telemetry Banner */}
-                  <div
-                    style={{
-                      background: 'rgba(16,185,129,0.1)',
-                      border: '1px solid rgba(16,185,129,0.25)',
-                      borderRadius: '10px',
-                      padding: '10px 14px',
-                      marginBottom: '14px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between'
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <CheckCircle size={14} style={{ color: '#34d399' }} />
-                      <span style={{ fontSize: '12px', color: '#6ee7b7', fontWeight: 700 }}>
-                        {ragResult.recommendations.length} Outfits Grounded in MongoDB
-                      </span>
-                    </div>
-                    <span style={{ fontSize: '10px', color: '#a7f3d0' }}>
-                      {ragResult.generationSource}
-                    </span>
-                  </div>
-
-                  {/* Outfit Cards */}
-                  {ragResult.recommendations.map((outfit, idx) => (
+                  {/* AI Fashion Stylist Speech / Message Bubble */}
+                  {ragResult.stylistMessage && (
                     <div
-                      key={idx}
                       style={{
-                        background: 'rgba(255,255,255,0.03)',
-                        border: '1px solid rgba(139,92,246,0.25)',
+                        background: 'linear-gradient(135deg, rgba(124,58,237,0.25) 0%, rgba(236,72,153,0.18) 100%)',
+                        border: '1px solid rgba(236,72,153,0.4)',
                         borderRadius: '14px',
-                        padding: '16px',
+                        padding: '13px 15px',
                         marginBottom: '14px',
-                        boxShadow: '0 8px 24px rgba(0,0,0,0.3)'
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        gap: '12px',
+                        boxShadow: '0 4px 18px rgba(0,0,0,0.3)'
                       }}
                     >
-                      {/* Outfit Header */}
                       <div
                         style={{
-                          display: 'flex',
-                          alignItems: 'flex-start',
-                          justifyContent: 'space-between',
-                          marginBottom: '10px'
-                        }}
-                      >
-                        <div>
-                          <span
-                            style={{
-                              fontSize: '15px',
-                              fontWeight: 800,
-                              color: 'white',
-                              display: 'block'
-                            }}
-                          >
-                            {outfit.outfitName}
-                          </span>
-                          <span style={{ fontSize: '11px', color: '#9d84bf' }}>
-                            {outfit.style} • {outfit.occasion}
-                          </span>
-                        </div>
-                        <Badge color="purple">
-                          <Star size={10} className="text-amber-400" />
-                          {Math.round((outfit.confidence || 0.9) * 100)}% Match
-                        </Badge>
-                      </div>
-
-                      {/* Retrieved Items in this Outfit */}
-                      <div
-                        style={{
-                          background: 'rgba(0,0,0,0.3)',
+                          width: 32,
+                          height: 32,
                           borderRadius: '10px',
-                          padding: '8px 10px',
-                          marginBottom: '10px'
-                        }}
-                      >
-                        <span
-                          style={{
-                            fontSize: '10px',
-                            fontWeight: 700,
-                            textTransform: 'uppercase',
-                            color: '#8b6fb5',
-                            display: 'block',
-                            marginBottom: '6px'
-                          }}
-                        >
-                          Verified MongoDB Wardrobe Items ({outfit.clothingItems.length}):
-                        </span>
-                        {outfit.clothingItems.map((piece) => (
-                          <div
-                            key={piece._id}
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'space-between',
-                              padding: '4px 0',
-                              borderBottom: '1px solid rgba(255,255,255,0.04)',
-                              fontSize: '11px'
-                            }}
-                          >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                              <span
-                                style={{
-                                  width: '9px',
-                                  height: '9px',
-                                  borderRadius: '50%',
-                                  backgroundColor: piece.color?.primary || '#d4b79b'
-                                }}
-                              />
-                              <span style={{ fontWeight: 600, color: '#f3e8ff' }}>{piece.name}</span>
-                            </div>
-                            <span style={{ color: '#8b6fb5', fontSize: '10px' }}>
-                              {piece.category}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-
-                      {/* Color Harmony Note */}
-                      {outfit.colorHarmony && (
-                        <p
-                          style={{
-                            margin: '0 0 8px',
-                            fontSize: '11px',
-                            color: '#d8b4fe',
-                            background: 'rgba(139,92,246,0.1)',
-                            padding: '6px 10px',
-                            borderRadius: '8px',
-                            borderLeft: '3px solid #a855f7'
-                          }}
-                        >
-                          🎨 <strong>Color Harmony:</strong> {outfit.colorHarmony}
-                        </p>
-                      )}
-
-                      {/* Styling Explanation */}
-                      {outfit.explanation && (
-                        <p
-                          style={{
-                            margin: '0 0 10px',
-                            fontSize: '11.5px',
-                            color: '#cbd5e1',
-                            lineHeight: 1.5
-                          }}
-                        >
-                          {outfit.explanation}
-                        </p>
-                      )}
-
-                      {/* Sustainability Note */}
-                      {outfit.sustainabilityNote && (
-                        <p
-                          style={{
-                            margin: '0 0 12px',
-                            fontSize: '11px',
-                            color: '#6ee7b7',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '4px'
-                          }}
-                        >
-                          <Leaf size={12} />
-                          {outfit.sustainabilityNote}
-                        </p>
-                      )}
-
-                      {/* One-Click Wear in 3D VR Button */}
-                      <button
-                        onClick={() => handleApplyToVR(outfit)}
-                        style={{
-                          width: '100%',
-                          padding: '10px',
-                          borderRadius: '10px',
-                          background: 'linear-gradient(135deg,#7c3aed,#ec4899)',
-                          border: 'none',
-                          color: 'white',
-                          fontWeight: 700,
-                          fontSize: '12px',
-                          cursor: 'pointer',
+                          background: 'linear-gradient(135deg,#ec4899,#8b5cf6)',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          gap: '6px',
-                          boxShadow: '0 4px 14px rgba(236,72,153,0.3)',
-                          transition: 'transform 0.2s'
+                          flexShrink: 0,
+                          boxShadow: '0 2px 10px rgba(236,72,153,0.4)'
                         }}
                       >
-                        <Compass size={14} />
-                        Wear This in 3D VR (Instant Avatar Try-On)
-                      </button>
+                        <Sparkles size={16} color="white" />
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                          <span style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#f472b6' }}>
+                            ✨ AI Fashion Stylist
+                          </span>
+                          <span style={{ fontSize: '9px', padding: '1px 6px', borderRadius: '999px', background: 'rgba(139,92,246,0.3)', color: '#c4b5fd', fontWeight: 700 }}>
+                            {ragResult.generationSource ? 'Groq LLaMA-3' : 'RAG Engine'}
+                          </span>
+                        </div>
+                        <p style={{ margin: 0, fontSize: '12.5px', color: '#f8fafc', lineHeight: 1.45 }}>
+                          {ragResult.stylistMessage}
+                        </p>
+                      </div>
                     </div>
-                  ))}
+                  )}
+
+                  {/* Status & Grounding Notification Banner */}
+                  {ragResult.notFound && !ragResult.isConversational ? (
+                    <div
+                      style={{
+                        background: 'rgba(245,158,11,0.12)',
+                        border: '1px solid rgba(245,158,11,0.35)',
+                        borderRadius: '12px',
+                        padding: '12px 14px',
+                        marginBottom: '14px',
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        gap: '10px'
+                      }}
+                    >
+                      <span style={{ fontSize: '18px', flexShrink: 0 }}>🔍</span>
+                      <div>
+                        <span style={{ fontSize: '12px', fontWeight: 700, color: '#fef08a', display: 'block' }}>
+                          {ragResult.message || `This exact item is not available in your personal wardrobe.`}
+                        </span>
+                        <span style={{ fontSize: '11px', color: '#fde047', marginTop: '2px', display: 'block' }}>
+                          Showing closest matching alternatives and online looks below that you can try on the model.
+                        </span>
+                      </div>
+                    </div>
+                  ) : !ragResult.stylistMessage && (
+                    <div
+                      style={{
+                        background: 'rgba(16,185,129,0.12)',
+                        border: '1px solid rgba(16,185,129,0.3)',
+                        borderRadius: '10px',
+                        padding: '10px 14px',
+                        marginBottom: '14px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <CheckCircle size={14} style={{ color: '#34d399' }} />
+                        <span style={{ fontSize: '12px', color: '#6ee7b7', fontWeight: 700 }}>
+                          ✓ Grounded Wardrobe Matches Found
+                        </span>
+                      </div>
+                      <span style={{ fontSize: '10px', color: '#a7f3d0' }}>
+                        {ragResult.generationSource || 'MongoDB RAG Engine'}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* ─────────────────────────────────────────────────────────────
+                      SECTION 1: 🎯 EXACT MATCHES IN WARDROBE
+                      ───────────────────────────────────────────────────────────── */}
+                  {ragResult.exactMatches && ragResult.exactMatches.length > 0 && (
+                    <div style={{ marginBottom: '18px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
+                        <Star size={13} style={{ color: '#ec4899' }} />
+                        <span style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#f472b6' }}>
+                          🎯 Exact Wardrobe Matches ({ragResult.exactMatches.length})
+                        </span>
+                      </div>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {ragResult.exactMatches.map((piece) => {
+                          const isCurrentlyWorn = wearingItemId === (piece._id || piece.id);
+                          const imgUrl = piece.imageUrl || piece.image;
+
+                          return (
+                            <div
+                              key={piece._id || piece.id}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '10px',
+                                background: 'rgba(0,0,0,0.35)',
+                                border: isCurrentlyWorn
+                                  ? '1px solid #10b981'
+                                  : '1px solid rgba(236,72,153,0.3)',
+                                borderRadius: '12px',
+                                padding: '9px 12px',
+                                transition: 'all 0.2s'
+                              }}
+                            >
+                              <div
+                                style={{
+                                  width: '48px',
+                                  height: '48px',
+                                  borderRadius: '8px',
+                                  overflow: 'hidden',
+                                  flexShrink: 0,
+                                  background: piece.primaryColor || '#a855f7',
+                                  border: '1px solid rgba(255,255,255,0.15)'
+                                }}
+                              >
+                                {imgUrl ? (
+                                  <img
+                                    src={imgUrl}
+                                    alt={piece.name}
+                                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                                  />
+                                ) : (
+                                  <div style={{ width: '100%', height: '100%', background: piece.primaryColor || '#ec4899' }} />
+                                )}
+                              </div>
+
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <span style={{ fontSize: '12.5px', fontWeight: 800, color: '#f8fafc', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  {piece.name}
+                                </span>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginTop: '3px' }}>
+                                  <Badge color="pink">{piece.category}</Badge>
+                                  <span style={{ fontSize: '10px', color: '#c4b5fd' }}>{piece.color}</span>
+                                  {piece.material && (
+                                    <span style={{ fontSize: '10px', color: '#94a3b8' }}>• {piece.material}</span>
+                                  )}
+                                </div>
+                              </div>
+
+                              <button
+                                onClick={() => handleWearSinglePiece(piece)}
+                                style={{
+                                  padding: '7px 11px',
+                                  borderRadius: '8px',
+                                  background: isCurrentlyWorn
+                                    ? 'linear-gradient(135deg,#10b981,#059669)'
+                                    : 'linear-gradient(135deg,#ec4899,#8b5cf6)',
+                                  border: 'none',
+                                  color: 'white',
+                                  fontSize: '11px',
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  flexShrink: 0
+                                }}
+                              >
+                                {isCurrentlyWorn ? <CheckCircle size={12} /> : <Sparkles size={12} />}
+                                {isCurrentlyWorn ? 'Worn' : 'Wear'}
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ─────────────────────────────────────────────────────────────
+                      SECTION 2: 💡 SIMILAR ALTERNATIVES
+                      ───────────────────────────────────────────────────────────── */}
+                  {ragResult.similarAlternatives && ragResult.similarAlternatives.length > 0 && (
+                    <div style={{ marginBottom: '18px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
+                        <Compass size={13} style={{ color: '#f59e0b' }} />
+                        <span style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#fcd34d' }}>
+                          💡 Similar Wardrobe Alternatives ({ragResult.similarAlternatives.length})
+                        </span>
+                      </div>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {ragResult.similarAlternatives.map((piece) => {
+                          const isCurrentlyWorn = wearingItemId === (piece._id || piece.id);
+                          const imgUrl = piece.imageUrl || piece.image;
+
+                          return (
+                            <div
+                              key={piece._id || piece.id}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '10px',
+                                background: 'rgba(0,0,0,0.3)',
+                                border: isCurrentlyWorn
+                                  ? '1px solid #10b981'
+                                  : '1px solid rgba(245,158,11,0.25)',
+                                borderRadius: '12px',
+                                padding: '9px 12px'
+                              }}
+                            >
+                              <div
+                                style={{
+                                  width: '46px',
+                                  height: '46px',
+                                  borderRadius: '8px',
+                                  overflow: 'hidden',
+                                  flexShrink: 0,
+                                  background: piece.primaryColor || '#a855f7',
+                                  border: '1px solid rgba(255,255,255,0.15)'
+                                }}
+                              >
+                                {imgUrl ? (
+                                  <img
+                                    src={imgUrl}
+                                    alt={piece.name}
+                                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                                  />
+                                ) : (
+                                  <div style={{ width: '100%', height: '100%', background: piece.primaryColor || '#f59e0b' }} />
+                                )}
+                              </div>
+
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <span style={{ fontSize: '12px', fontWeight: 800, color: '#f8fafc', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  {piece.name}
+                                </span>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px', flexWrap: 'wrap' }}>
+                                  <span style={{ fontSize: '9px', fontWeight: 700, padding: '1px 6px', borderRadius: '4px', background: 'rgba(245,158,11,0.2)', color: '#fde047' }}>
+                                    {piece.alternativeReason || 'Closest Wardrobe Match'}
+                                  </span>
+                                  <span style={{ fontSize: '10px', color: '#94a3b8' }}>• {piece.category}</span>
+                                </div>
+                              </div>
+
+                              <button
+                                onClick={() => handleWearSinglePiece(piece)}
+                                style={{
+                                  padding: '6px 10px',
+                                  borderRadius: '8px',
+                                  background: isCurrentlyWorn
+                                    ? 'linear-gradient(135deg,#10b981,#059669)'
+                                    : 'linear-gradient(135deg,#f59e0b,#d97706)',
+                                  border: 'none',
+                                  color: 'white',
+                                  fontSize: '10.5px',
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  flexShrink: 0
+                                }}
+                              >
+                                {isCurrentlyWorn ? <CheckCircle size={11} /> : <Sparkles size={11} />}
+                                {isCurrentlyWorn ? 'Worn' : 'Wear'}
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ─────────────────────────────────────────────────────────────
+                      SECTION 3: 🛍️ FIND SIMILAR ONLINE (E-COMMERCE RECOMMENDATIONS)
+                      ───────────────────────────────────────────────────────────── */}
+                  {ragResult.ecommerceMatches && ragResult.ecommerceMatches.length > 0 && (
+                    <div style={{ marginBottom: '18px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
+                        <Tag size={13} style={{ color: '#ec4899' }} />
+                        <span style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#f472b6' }}>
+                          🛍️ Find Similar Online ({ragResult.ecommerceMatches.length} Partner Matches)
+                        </span>
+                      </div>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {ragResult.ecommerceMatches.map((piece) => {
+                          const isCurrentlyWorn = wearingItemId === (piece._id || piece.id);
+                          const imgUrl = piece.imageUrl || piece.image;
+
+                          return (
+                            <div
+                              key={piece._id || piece.id}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '10px',
+                                background: 'rgba(236,72,153,0.06)',
+                                border: isCurrentlyWorn
+                                  ? '1px solid #10b981'
+                                  : '1px solid rgba(236,72,153,0.3)',
+                                borderRadius: '12px',
+                                padding: '9px 12px'
+                              }}
+                            >
+                              <div
+                                style={{
+                                  width: '48px',
+                                  height: '48px',
+                                  borderRadius: '8px',
+                                  overflow: 'hidden',
+                                  flexShrink: 0,
+                                  background: piece.primaryColor || '#ec4899',
+                                  border: '1px solid rgba(255,255,255,0.15)'
+                                }}
+                              >
+                                {imgUrl && (
+                                  <img
+                                    src={imgUrl}
+                                    alt={piece.name}
+                                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                                  />
+                                )}
+                              </div>
+
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <span style={{ fontSize: '12.5px', fontWeight: 800, color: '#fdf2f8', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  {piece.name}
+                                </span>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '3px' }}>
+                                  <span style={{ fontSize: '9.5px', fontWeight: 700, padding: '1px 6px', borderRadius: '4px', background: 'rgba(236,72,153,0.2)', color: '#fbcfe8' }}>
+                                    {piece.store || 'E-Commerce Store'}
+                                  </span>
+                                  {piece.price && (
+                                    <span style={{ fontSize: '11px', fontWeight: 800, color: '#6ee7b7' }}>${piece.price}</span>
+                                  )}
+                                </div>
+                              </div>
+
+                              <button
+                                onClick={() => handleWearSinglePiece(piece)}
+                                style={{
+                                  padding: '7px 11px',
+                                  borderRadius: '8px',
+                                  background: isCurrentlyWorn
+                                    ? 'linear-gradient(135deg,#10b981,#059669)'
+                                    : 'linear-gradient(135deg,#ec4899,#7c3aed)',
+                                  border: 'none',
+                                  color: 'white',
+                                  fontSize: '11px',
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  flexShrink: 0
+                                }}
+                              >
+                                {isCurrentlyWorn ? <CheckCircle size={11} /> : <Sparkles size={11} />}
+                                {isCurrentlyWorn ? 'Worn' : 'Try on Model'}
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ─────────────────────────────────────────────────────────────
+                      SECTION 4: 👗 GROUNDED OUTFIT COMBINATIONS
+                      ───────────────────────────────────────────────────────────── */}
+                  {ragResult.recommendations && ragResult.recommendations.length > 0 && (
+                    <div style={{ marginBottom: '18px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
+                        <Grid size={13} style={{ color: '#a78bfa' }} />
+                        <span style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#c4b5fd' }}>
+                          👗 Grounded Complete Outfits ({ragResult.recommendations.length})
+                        </span>
+                      </div>
+
+                      {ragResult.recommendations.map((outfit, idx) => (
+                        <div
+                          key={idx}
+                          style={{
+                            background: 'rgba(255,255,255,0.03)',
+                            border: '1px solid rgba(139,92,246,0.25)',
+                            borderRadius: '14px',
+                            padding: '16px',
+                            marginBottom: '14px',
+                            boxShadow: '0 8px 24px rgba(0,0,0,0.3)'
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '10px' }}>
+                            <div>
+                              <span style={{ fontSize: '14px', fontWeight: 800, color: 'white', display: 'block' }}>
+                                {outfit.outfitName}
+                              </span>
+                              <span style={{ fontSize: '11px', color: '#9d84bf' }}>
+                                {outfit.style} • {outfit.occasion}
+                              </span>
+                            </div>
+                            <Badge color="purple">
+                              <Star size={10} className="text-amber-400" />
+                              {Math.round((outfit.confidence || 0.9) * 100)}% Match
+                            </Badge>
+                          </div>
+
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px' }}>
+                            {outfit.clothingItems?.map((piece) => {
+                              const isCurrentlyWorn = wearingItemId === (piece._id || piece.id);
+                              const imgUrl = piece.imageUrl || piece.image;
+
+                              return (
+                                <div
+                                  key={piece._id || piece.id}
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '10px',
+                                    background: 'rgba(0,0,0,0.35)',
+                                    border: isCurrentlyWorn
+                                      ? '1px solid #10b981'
+                                      : '1px solid rgba(139,92,246,0.2)',
+                                    borderRadius: '12px',
+                                    padding: '8px 10px'
+                                  }}
+                                >
+                                  <div
+                                    style={{
+                                      width: '44px',
+                                      height: '44px',
+                                      borderRadius: '8px',
+                                      overflow: 'hidden',
+                                      flexShrink: 0,
+                                      background: piece.primaryColor || '#a855f7',
+                                      border: '1px solid rgba(255,255,255,0.15)'
+                                    }}
+                                  >
+                                    {imgUrl ? (
+                                      <img
+                                        src={imgUrl}
+                                        alt={piece.name}
+                                        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                                      />
+                                    ) : (
+                                      <div style={{ width: '100%', height: '100%', background: piece.primaryColor || '#7c3aed' }} />
+                                    )}
+                                  </div>
+
+                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                    <span style={{ fontSize: '12px', fontWeight: 700, color: '#f8fafc', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>
+                                      {piece.name}
+                                    </span>
+                                    <span style={{ fontSize: '10px', color: '#94a3b8' }}>
+                                      {piece.category} • {piece.color}
+                                    </span>
+                                  </div>
+
+                                  <button
+                                    onClick={() => handleWearSinglePiece(piece)}
+                                    style={{
+                                      padding: '6px 10px',
+                                      borderRadius: '8px',
+                                      background: isCurrentlyWorn
+                                        ? 'linear-gradient(135deg,#10b981,#059669)'
+                                        : 'linear-gradient(135deg,#7c3aed,#ec4899)',
+                                      border: 'none',
+                                      color: 'white',
+                                      fontSize: '10.5px',
+                                      fontWeight: 700,
+                                      cursor: 'pointer',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '4px',
+                                      flexShrink: 0
+                                    }}
+                                  >
+                                    {isCurrentlyWorn ? <CheckCircle size={11} /> : <Sparkles size={11} />}
+                                    {isCurrentlyWorn ? 'Worn' : 'Wear'}
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </div>
+
+                          {outfit.colorHarmony && (
+                            <p style={{ margin: '0 0 8px', fontSize: '11px', color: '#d8b4fe', background: 'rgba(139,92,246,0.1)', padding: '6px 10px', borderRadius: '8px', borderLeft: '3px solid #a855f7' }}>
+                              🎨 <strong>Color Harmony:</strong> {outfit.colorHarmony}
+                            </p>
+                          )}
+
+                          {outfit.explanation && (
+                            <p style={{ margin: '0 0 10px', fontSize: '11.5px', color: '#cbd5e1', lineHeight: 1.5 }}>
+                              {outfit.explanation}
+                            </p>
+                          )}
+
+                          <button
+                            onClick={() => handleApplyToVR(outfit)}
+                            style={{
+                              width: '100%',
+                              padding: '10px',
+                              borderRadius: '10px',
+                              background: 'linear-gradient(135deg,#7c3aed,#ec4899)',
+                              border: 'none',
+                              color: 'white',
+                              fontWeight: 700,
+                              fontSize: '12px',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: '6px',
+                              boxShadow: '0 4px 14px rgba(236,72,153,0.3)'
+                            }}
+                          >
+                            <Compass size={14} /> Wear Full Outfit on 3D Model
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Empty fallback */}
+                  {(!ragResult.exactMatches || ragResult.exactMatches.length === 0) &&
+                    (!ragResult.similarAlternatives || ragResult.similarAlternatives.length === 0) &&
+                    (!ragResult.ecommerceMatches || ragResult.ecommerceMatches.length === 0) &&
+                    (!ragResult.recommendations || ragResult.recommendations.length === 0) && (
+                      <div style={{ textAlign: 'center', padding: '24px', background: 'rgba(255,255,255,0.03)', borderRadius: '12px' }}>
+                        <p style={{ fontSize: '13px', color: '#c4b5fd', margin: 0 }}>
+                          No items matched your specific filters. Try clicking "Reset Filters" or searching for "red frock" or "black jeans".
+                        </p>
+                      </div>
+                    )}
                 </div>
               )}
 
@@ -901,22 +1495,48 @@ export default function GroqAIPanel({
                     color: !imageFile || loading ? '#6b4d8f' : 'white',
                     cursor: !imageFile || loading ? 'not-allowed' : 'pointer',
                     fontWeight: 700,
-                    fontSize: '13px',
+                    fontSize: '12px',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    gap: '8px'
+                    gap: '6px'
                   }}
                 >
                   {loading ? (
                     <>
-                      <Loader size={15} className="spin" /> Scanning clothing features…
+                      <Loader size={14} className="spin" /> Inspecting…
                     </>
                   ) : (
                     <>
-                      <Zap size={15} /> Scan Clothing Item
+                      <Zap size={14} /> Scan Features
                     </>
                   )}
+                </button>
+
+                <button
+                  onClick={handleSearchSimilarInWardrobe}
+                  disabled={!imageFile || loading}
+                  title="Search your wardrobe & catalog for garments visually matching this photo"
+                  style={{
+                    flex: 1,
+                    padding: '11px',
+                    borderRadius: '10px',
+                    background:
+                      !imageFile || loading
+                        ? 'rgba(16,185,129,0.2)'
+                        : 'linear-gradient(135deg,#059669,#10b981)',
+                    border: 'none',
+                    color: !imageFile || loading ? '#064e3b' : 'white',
+                    cursor: !imageFile || loading ? 'not-allowed' : 'pointer',
+                    fontWeight: 700,
+                    fontSize: '12px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px'
+                  }}
+                >
+                  <Compass size={14} /> Search in Wardrobe
                 </button>
               </div>
 

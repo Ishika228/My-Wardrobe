@@ -1,9 +1,11 @@
 import express from 'express';
 import {
   getOutfitRecommendations,
-  getRAGOutfitRecommendations
+  getRAGOutfitRecommendations,
+  searchClothingByImage
 } from '../controllers/recommendationController.js';
 import { optionalProtect } from '../middleware/authMiddleware.js';
+import { uploadClothingImageMiddleware } from '../middleware/uploadMiddleware.js';
 
 const router = express.Router();
 
@@ -16,6 +18,13 @@ router.use(optionalProtect);
  * @access  Public / Optional Auth
  */
 router.post('/rag-outfits', getRAGOutfitRecommendations);
+
+/**
+ * @route   POST /api/recommendations/search-by-image
+ * @desc    Search clothing by uploading or scanning an image
+ * @access  Public / Optional Auth
+ */
+router.post('/search-by-image', uploadClothingImageMiddleware, searchClothingByImage);
 
 /**
  * @route   POST /api/recommendations/outfits

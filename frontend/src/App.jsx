@@ -1384,7 +1384,14 @@ export default function App() {
       <GroqAIPanel
         isOpen={isStylistOpen}
         onClose={() => setIsStylistOpen(false)}
-        onApplyOutfitToAvatar={handleTryOn}
+        onApplyOutfitToAvatar={(outfit) => {
+          if (outfit?.clothingItems && Array.isArray(outfit.clothingItems)) {
+            handleTryFullOutfit(outfit.clothingItems);
+          } else {
+            handleTryOn(outfit);
+          }
+        }}
+        onTryOnItem={handleTryOn}
         mongoClothes={backendWardrobe}
       />
 

@@ -2,7 +2,8 @@ import mongoose from 'mongoose';
 import ClothingItem from '../models/ClothingItem.js';
 import OutfitHistory from '../models/OutfitHistory.js';
 import { requestOutfitRecommendations } from '../services/aiRecommendationService.js';
-import { executeRAGOutfitStylist } from '../services/ragService.js';
+import { executeRAGOutfitStylist, executeRAGImageSearch } from '../services/ragService.js';
+import { recognizeClothingImage } from '../services/aiRecognitionService.js';
 
 /**
  * @desc    RAG (Retrieval-Augmented Generation) Fashion Stylist Endpoint
@@ -12,20 +13,69 @@ import { executeRAGOutfitStylist } from '../services/ragService.js';
  */
 export const getRAGOutfitRecommendations = async (req, res, next) => {
   try {
-    const { query, occasion, style, weather, preferredColors } = req.body;
+    const { query, category, color, occasion, style, weather, season, material, preferredColors } = req.body;
     const userId = req.user?._id;
 
     const result = await executeRAGOutfitStylist({
       userId,
       query: query || '',
       preferences: {
+        category,
+        color,
         occasion,
         style,
-        weather,
+        weather: weather || season,
+        season: season || weather,
+        material,
         preferredColors
       }
     });
 
+    return res.status(200).json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Search Clothing by Uploaded Image or Extracted Image Features
+ * @route   POST /api/recommendations/search-by-image
+ * @access  Public / Optional Auth
+ */
+export const searchClothingByImage = async (req, res, next) => {
+  try {
+    const userId = req.user?._id;
+    let features = {};
+
+    if (req.body.category || req.body.color || req.body.dominantColor || req.body.pattern) {
+      features = {
+        category: req.body.category,
+        dominantColor: req.body.color || req.body.dominantColor,
+        pattern: req.body.pattern,
+        aspectRatio: req.body.aspectRatio
+      };
+    }
+
+    if (req.file) {
+      const filename = req.file.filename;
+      const relativePath = `/uploads/clothing/${filename}`;
+      try {
+        const aiResult = await recognizeClothingImage(relativePath);
+        if (aiResult?.data) {
+          features = {
+            category: features.category || aiResult.data.category,
+            dominantColor: features.dominantColor || aiResult.data.color,
+            pattern: features.pattern || aiResult.data.pattern,
+            material: features.material || aiResult.data.material,
+            aspectRatio: features.aspectRatio || 1.2
+          };
+        }
+      } catch (err) {
+        console.warn('Image analysis fallback during image search:', err.message);
+      }
+    }
+
+    const result = await executeRAGImageSearch({ features, userId });
     return res.status(200).json(result);
   } catch (error) {
     next(error);

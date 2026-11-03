@@ -6,13 +6,30 @@ import mongoose from 'mongoose';
 export const CLOTHING_CATEGORIES = [
   'Shirt',
   'T-Shirt',
+  'Top',
+  'Crop Top',
   'Jeans',
   'Trousers',
+  'Bottom',
+  'Pants',
   'Jacket',
+  'Coat',
+  'Blazer',
+  'Overcoat',
+  'Cardigan',
+  'Sweater',
   'Dress',
+  'Frock',
   'Skirt',
   'Shoes',
+  'Sneakers',
+  'Heels',
+  'Boots',
+  'Sandals',
+  'Loafers',
   'Accessories',
+  'Bag',
+  'Jewelry',
   'Ethnic',
   'Traditional',
   'Saree',
@@ -95,6 +112,32 @@ const clothingItemSchema = new mongoose.Schema(
       default: null,
       trim: true,
     },
+    tags: {
+      type: [String],
+      default: [],
+    },
+    description: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    text_embedding: {
+      type: [Number],
+      default: [],
+    },
+    image_embedding: {
+      type: [Number],
+      default: [],
+    },
+    source: {
+      type: String,
+      default: 'wardrobe',
+      trim: true,
+    },
+    isEstimated: {
+      type: Boolean,
+      default: false,
+    },
     aiAnalyzed: {
       type: Boolean,
       default: false,
@@ -152,6 +195,14 @@ const clothingItemSchema = new mongoose.Schema(
 clothingItemSchema.index({ userId: 1, category: 1 });
 clothingItemSchema.index({ userId: 1, isFavorite: 1 });
 clothingItemSchema.index({ userId: 1, createdAt: -1 });
+clothingItemSchema.index({
+  name: 'text',
+  category: 'text',
+  subCategory: 'text',
+  color: 'text',
+  description: 'text',
+  material: 'text',
+});
 
 const ClothingItem = mongoose.model('ClothingItem', clothingItemSchema);
 

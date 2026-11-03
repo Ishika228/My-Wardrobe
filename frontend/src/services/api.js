@@ -224,6 +224,29 @@ export async function getRAGOutfitRecommendations({ query = '', preferences = {}
   }
 }
 
+export async function searchClothingByImage(fileOrFormData) {
+  try {
+    const token = getToken();
+    let body = fileOrFormData;
+    if (fileOrFormData instanceof File) {
+      body = new FormData();
+      body.append('image', fileOrFormData);
+    }
+    const res = await fetch(`${API_BASE}/recommendations/search-by-image`, {
+      method: 'POST',
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
+      },
+      body
+    });
+    if (!res.ok) throw new Error(`Visual search API returned status ${res.status}`);
+    return await res.json();
+  } catch (err) {
+    console.warn('Visual search error:', err);
+    throw err;
+  }
+}
+
 // ── Health Check ────────────────────────────────────────────────────────────
 export async function healthCheck() {
   try {
