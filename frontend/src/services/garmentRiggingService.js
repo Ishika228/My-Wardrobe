@@ -10,25 +10,25 @@ const modelCache = new Map();
  */
 const ANATOMY_TARGETS = {
   dress: {
-    targetHeight: 0.78, // from knees to upper chest
+    targetHeight: 0.83, // from knees (0.63) to collarbone (1.46)
     targetWidth: 0.38,  // across shoulders/bust
-    targetDepth: 0.28,  // chest to back
-    targetCenterY: 0.98,
-    targetCenterZ: 0.015,
+    targetDepth: 0.32,  // chest to back
+    targetCenterY: 1.045, // (1.46 + 0.63) / 2
+    targetCenterZ: 0.035,
   },
   top: {
-    targetHeight: 0.44, // from waist to collarbone
+    targetHeight: 0.36, // from waist (1.135) to collarbone (1.495)
     targetWidth: 0.38,
-    targetDepth: 0.24,
-    targetCenterY: 1.14,
-    targetCenterZ: 0.015,
+    targetDepth: 0.26,
+    targetCenterY: 1.315,
+    targetCenterZ: 0.035,
   },
   trousers: {
-    targetHeight: 0.88, // from ankles to waist
-    targetWidth: 0.34,
+    targetHeight: 0.94, // from ankles (0.20) to waist (1.14)
+    targetWidth: 0.35,
     targetDepth: 0.26,
-    targetCenterY: 0.52,
-    targetCenterZ: 0.01,
+    targetCenterY: 0.67,
+    targetCenterZ: 0.025,
   },
 };
 
@@ -101,46 +101,46 @@ export function fitAndRigStaticGarment(inputGeometry, material, avatarSkeleton, 
     let b2 = idxSpine1, w2 = 0.0;
     let b3 = idxSpine2, w3 = 0.0;
 
-    if (y > 1.20) {
+    if (y > 1.40) {
       // Shoulders, neck and upper arms
-      if (x < -0.09) {
+      if (x < -0.10) {
         b0 = idxLeftArm; b1 = idxLeftShoulder; b2 = idxSpine2;
         w0 = 0.55; w1 = 0.30; w2 = 0.15;
-      } else if (x > 0.09) {
+      } else if (x > 0.10) {
         b0 = idxRightArm; b1 = idxRightShoulder; b2 = idxSpine2;
         w0 = 0.55; w1 = 0.30; w2 = 0.15;
       } else {
         b0 = idxSpine2; b1 = idxSpine1;
         w0 = 0.85; w1 = 0.15;
       }
-    } else if (y > 1.05) {
+    } else if (y > 1.28) {
       // Chest / bust
       b0 = idxSpine2; b1 = idxSpine1;
-      const t = Math.max(0, Math.min(1, (y - 1.05) / 0.15));
-      w0 = 0.3 + 0.6 * t;
+      const t = Math.max(0, Math.min(1, (y - 1.28) / 0.12));
+      w0 = 0.4 + 0.5 * t;
       w1 = 1.0 - w0;
-    } else if (y > 0.92) {
-      // Mid torso / waist
+    } else if (y > 1.16) {
+      // Mid torso / ribcage
       b0 = idxSpine1; b1 = idxSpine;
-      const t = Math.max(0, Math.min(1, (y - 0.92) / 0.13));
-      w0 = 0.35 + 0.5 * t;
+      const t = Math.max(0, Math.min(1, (y - 1.16) / 0.12));
+      w0 = 0.40 + 0.45 * t;
       w1 = 1.0 - w0;
-    } else if (y > 0.80) {
-      // Hips / pelvis
+    } else if (y > 1.04) {
+      // Waist & Hips transition
       b0 = idxSpine; b1 = idxHips;
-      const t = Math.max(0, Math.min(1, (y - 0.80) / 0.12));
-      w0 = 0.2 + 0.6 * t;
+      const t = Math.max(0, Math.min(1, (y - 1.04) / 0.12));
+      w0 = 0.30 + 0.50 * t;
       w1 = 1.0 - w0;
     } else {
       // Legs / Skirt flare
       if (category === 'trousers') {
         if (x < 0) {
           b0 = idxLeftUpLeg; b1 = idxLeftLeg;
-          const t = Math.max(0, Math.min(1, (y - 0.45) / 0.35));
+          const t = Math.max(0, Math.min(1, (y - 0.55) / 0.45));
           w0 = t; w1 = 1.0 - t;
         } else {
           b0 = idxRightUpLeg; b1 = idxRightLeg;
-          const t = Math.max(0, Math.min(1, (y - 0.45) / 0.35));
+          const t = Math.max(0, Math.min(1, (y - 0.55) / 0.45));
           w0 = t; w1 = 1.0 - t;
         }
       } else {
@@ -212,8 +212,8 @@ export async function loadAndRigGlbGarment(
     throw new Error('No mesh found inside GLB file');
   }
 
-  // If already a SkinnedMesh with existing bone weights, use directly
-  if (extractedMesh.isSkinnedMesh && extractedMesh.geometry.attributes.skinIndex) {
+  // If already rigged with existing bone weights (e.g. authentic garment GLB), use directly as a SkinnedMesh
+  if (extractedMesh.geometry?.attributes?.skinIndex) {
     const skinnedMesh = new THREE.SkinnedMesh(
       extractedMesh.geometry.clone(),
       fallbackMaterial || extractedMesh.material

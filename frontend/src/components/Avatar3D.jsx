@@ -308,10 +308,10 @@ export default function Avatar3D({
       setBoneRel('RightLeg', 1, 0, 0, -kneeR);
 
       // Arm swing in counter-cadence with legs
-      setBoneRel('LeftArm', 1, 0, 0, -0.55 + strideR * 0.4);
-      setBoneRel('RightArm', 1, 0, 0, -0.55 + strideL * 0.4);
-      setBoneRel('LeftForeArm', 1, 0, 0, -0.15);
-      setBoneRel('RightForeArm', 1, 0, 0, -0.15);
+      setBoneRel('LeftArm', 1, 0, 0, 0.28 + strideR * 0.25);
+      setBoneRel('RightArm', 1, 0, 0, 0.28 + strideL * 0.25);
+      setBoneRel('LeftForeArm', 1, 0, 0, 0.08);
+      setBoneRel('RightForeArm', 1, 0, 0, 0.08);
 
       if (bones['Hips']) {
         const bob = Math.abs(Math.sin(p)) * 0.015;
@@ -331,10 +331,10 @@ export default function Avatar3D({
       setBoneRel('RightLeg', 1, 0, 0, 0);
 
       // Arms relaxed naturally down along the torso
-      setBoneRel('LeftArm', 1, 0, 0, -0.55 + sway * 0.4);
-      setBoneRel('RightArm', 1, 0, 0, -0.55 - sway * 0.4);
-      setBoneRel('LeftForeArm', 1, 0, 0, -0.12);
-      setBoneRel('RightForeArm', 1, 0, 0, -0.12);
+      setBoneRel('LeftArm', 1, 0, 0, 0.28 + sway * 0.2);
+      setBoneRel('RightArm', 1, 0, 0, 0.28 - sway * 0.2);
+      setBoneRel('LeftForeArm', 1, 0, 0, 0.08);
+      setBoneRel('RightForeArm', 1, 0, 0, 0.08);
 
       // Subtle chest & spine breathing
       setBoneRel('Spine', 1, 0, 0, breathe * 2.0);

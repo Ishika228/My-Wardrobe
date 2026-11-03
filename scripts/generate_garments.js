@@ -63,88 +63,104 @@ function makeRiggedGeometry({ positions, normals, uvs, skinIndices, skinWeights,
 function createFloralPuffDressGeometry() {
   const parts = [];
 
-  // 1A. Bodice with Square Neckline & Princess Seams
-  // From waist Y=1.15 to chest Y=1.34; shoulder straps rise to Y=1.45
+  // 1A. Bodice with Square Neckline & Princess Seams fitted to ReadyPlayerMe Avatar Torso
+  // Fits avatar waist Y=1.135 (rx=0.118, rz=0.095, cz=0.054) to bust Y=1.340 (rx=0.137, rz=0.112, cz=0.044)
+  // Shoulder straps rise over shoulders to Y=1.455 (aligned with neck Y=1.469, shoulders Y=1.449)
   {
     const positions = [], uvs = [], skinIndices = [], skinWeights = [], indices = [];
-    const ySegments = 16;
-    const radialSegments = 36;
-    const waistY = 1.15;
-    const bustY = 1.34;
-    const strapTopY = 1.45;
+    const ySegments = 20;
+    const radialSegments = 40;
+    const waistY = 1.135;
+    const bustY = 1.340;
+    const strapTopY = 1.455;
 
     for (let iy = 0; iy <= ySegments; iy++) {
       const v = iy / ySegments;
-      const y = waistY + (strapTopY - waistY) * v;
-
-      // Base radius calculation
-      let rx, rz, cz = 0.025;
-      if (y <= bustY) {
-        const t = (y - waistY) / (bustY - waistY);
-        rx = 0.165 + (0.180 - 0.165) * Math.sin(t * Math.PI * 0.5);
-        rz = 0.118 + (0.142 - 0.118) * Math.sin(t * Math.PI * 0.5);
-        cz = 0.025 + 0.012 * t;
-      } else {
-        // Upper chest / straps
-        const t = (y - bustY) / (strapTopY - bustY);
-        rx = 0.180 - 0.040 * t;
-        rz = 0.142 - 0.050 * t;
-        cz = 0.037 - 0.015 * t;
-      }
+      const baseY = waistY + (strapTopY - waistY) * v;
 
       for (let ix = 0; ix <= radialSegments; ix++) {
         const u = ix / radialSegments;
         const angle = u * Math.PI * 2;
-        const sinA = Math.sin(angle);
-        const cosA = Math.cos(angle);
+        const sinA = Math.sin(angle); // > 0 front, < 0 back
+        const cosA = Math.cos(angle); // > 0 left, < 0 right
 
-        // Front is sinA > 0 (Z > 0); Back is sinA < 0 (Z < 0)
-        let curRx = rx;
-        let curRz = rz;
+        let rx, rz, cz, y = baseY;
 
-        // Front bust contouring
-        if (y > waistY && y < bustY + 0.03 && sinA > 0.1) {
-          const bt = Math.sin(((y - waistY) / (bustY - waistY)) * Math.PI);
-          curRz += Math.sin(angle) * 0.016 * bt;
-        }
+        if (baseY <= bustY) {
+          // From waist up to bust
+          const t = (baseY - waistY) / (bustY - waistY);
+          rx = 0.118 + (0.137 - 0.118) * Math.sin(t * Math.PI * 0.5);
+          rz = 0.095 + (0.112 - 0.095) * Math.sin(t * Math.PI * 0.5);
+          cz = 0.054 + (0.044 - 0.054) * t;
 
-        let posX = cosA * curRx;
-        let posZ = sinA * curRz + cz;
-        let posY = y;
+          // Front bust gentle cups
+          if (sinA > 0.1) {
+            rz += sinA * 0.010 * Math.sin(t * Math.PI);
+          }
+        } else {
+          // Upper chest, square neckline and shoulder straps
+          const t = (baseY - bustY) / (strapTopY - bustY);
+          rx = 0.137 + (0.130 - 0.137) * t;
+          rz = 0.112 + (0.085 - 0.112) * t;
+          cz = 0.044 + (0.005 - 0.044) * t;
 
-        // Square neckline cutout in front: push inwards or open up
-        if (y > bustY && sinA > 0.3) {
-          // Front neck cutout: push back towards chest wall
-          const neckCut = Math.min(1.0, (y - bustY) / 0.08);
-          if (Math.abs(posX) < 0.09) {
-            posZ -= 0.025 * neckCut;
-            curRz *= (1 - 0.15 * neckCut);
+          // Square neckline cutout in front: sinA > 0.35 (front center |X| < 0.078)
+          const isFrontCenter = sinA > 0.35 && Math.abs(cosA * rx) < 0.078;
+          if (isFrontCenter) {
+            // Drop front neckline to upper bust level (1.365)
+            y = Math.min(y, bustY + 0.025 + (1 - sinA) * 0.03);
+            rz *= 0.94;
+          } else if (sinA < -0.35) {
+            // Back neck: gently dips to 1.415
+            y = Math.min(y, 1.415 + (1 + sinA) * 0.02);
           }
         }
+
+        const posX = cosA * rx;
+        const posZ = sinA * rz + cz;
+        const posY = y;
 
         positions.push(posX, posY, posZ);
 
         // UV: Orthographic front mapping for front faces, seamless wrap for back
-        // Image spans Y=[0.55, 1.48] and X=[-0.38, 0.38]
         const uvU = 0.5 + (posX / 0.70);
         const uvV = (posY - 0.55) / 0.95;
         uvs.push(Math.max(0, Math.min(1, uvU)), Math.max(0, Math.min(1, uvV)));
 
-        // Skin weights: smoothly blend Spine2, Spine1, Spine, Hips
+        // Rigging weights anchored to avatar spine bones
         let i0 = HIPS_IDX, i1 = SPINE_IDX, i2 = SPINE1_IDX, i3 = SPINE2_IDX;
         let w0 = 0, w1 = 0, w2 = 0, w3 = 0;
 
-        if (y >= 1.34) {
-          w3 = 0.85; w2 = 0.15;
-        } else if (y >= 1.25) {
-          const t = (y - 1.25) / 0.09;
-          w3 = t * 0.85; w2 = 1.0 - w3;
-        } else if (y >= 1.18) {
-          const t = (y - 1.18) / 0.07;
-          w2 = t * 0.80; w1 = 1.0 - w2;
+        if (posY >= 1.40) {
+          // Straps / shoulders
+          if (posX > 0.06) {
+            i0 = SPINE2_IDX; i1 = L_SHOULDER_IDX;
+            w0 = 0.55; w1 = 0.45;
+          } else if (posX < -0.06) {
+            i0 = SPINE2_IDX; i1 = R_SHOULDER_IDX;
+            w0 = 0.55; w1 = 0.45;
+          } else {
+            i0 = SPINE2_IDX; i1 = SPINE1_IDX;
+            w0 = 0.85; w1 = 0.15;
+          }
+        } else if (posY >= 1.30) {
+          // Chest / bust
+          i0 = SPINE2_IDX; i1 = SPINE1_IDX;
+          const t = (posY - 1.30) / 0.10;
+          w0 = 0.50 + 0.40 * t;
+          w1 = 1.0 - w0;
+        } else if (posY >= 1.20) {
+          // Mid torso
+          i0 = SPINE1_IDX; i1 = SPINE_IDX;
+          const t = (posY - 1.20) / 0.10;
+          w0 = 0.50 + 0.40 * t;
+          w1 = 1.0 - w0;
         } else {
-          const t = (y - waistY) / 0.03;
-          w1 = t * 0.60; w0 = 1.0 - w1;
+          // Waist
+          i0 = SPINE_IDX; i1 = HIPS_IDX;
+          const t = (posY - waistY) / 0.065;
+          w0 = 0.40 + 0.50 * t;
+          w1 = 1.0 - w0;
         }
         skinIndices.push(i0, i1, i2, i3);
         skinWeights.push(w0, w1, w2, w3);
@@ -166,56 +182,72 @@ function createFloralPuffDressGeometry() {
   }
 
   // 1B. Volumetric 3D Puff Sleeves (Left and Right)
-  // Each sleeve is a bulbous ellipsoid with gathered ruffled elastic cuff
+  // Perfectly positioned around avatar shoulder joints (X=±0.138, Y=1.430, Z=-0.015)
   function makePuffSleeve(isLeft) {
     const positions = [], uvs = [], skinIndices = [], skinWeights = [], indices = [];
     const sideSign = isLeft ? 1 : -1;
     const shoulderJoint = isLeft ? L_SHOULDER_IDX : R_SHOULDER_IDX;
     const armJoint = isLeft ? L_ARM_IDX : R_ARM_IDX;
 
-    // Center of puff volume in upper arm space
-    const centerX = sideSign * 0.20;
-    const centerY = 1.37;
-    const centerZ = 0.02;
+    // Center of puff volume anchored over shoulder socket and upper deltoid
+    const centerX = sideSign * 0.138;
+    const centerY = 1.430;
+    const centerZ = -0.015;
 
-    const latSegments = 14;
-    const lonSegments = 20;
+    const latSegments = 16;
+    const lonSegments = 24;
 
     for (let ilat = 0; ilat <= latSegments; ilat++) {
       const v = ilat / latSegments;
       const phi = v * Math.PI; // 0 (top of shoulder) to PI (bottom cuff)
 
       // Radius profile: balloon out in middle, gather tight at bottom cuff
-      let r = Math.sin(phi) * 0.072;
-      let yOffset = Math.cos(phi) * 0.075;
+      let r = Math.sin(phi) * 0.058;
+      let yOffset = Math.cos(phi) * 0.055;
 
       // Add puff gather ripples
-      r += Math.sin(phi * 2.5) * 0.012;
+      r += Math.sin(phi * 3.0) * 0.006;
 
       // Elastic frill hem at the lower cuff opening
-      if (v > 0.85) {
-        r = 0.045 + Math.sin(v * 30) * 0.008; // Ruffled frill cuff
+      if (v > 0.82) {
+        const frillT = (v - 0.82) / 0.18;
+        r = 0.038 + Math.sin(v * 35) * 0.007 * frillT;
       }
 
       for (let ilon = 0; ilon <= lonSegments; ilon++) {
         const u = ilon / lonSegments;
         const theta = u * Math.PI * 2;
 
-        const px = centerX + sideSign * (Math.cos(theta) * r + 0.015);
+        const px = centerX + sideSign * (0.012 + Math.cos(theta) * r);
         const py = centerY + yOffset;
-        const pz = centerZ + Math.sin(theta) * r;
+        const pz = centerZ + Math.sin(theta) * (r * 0.95);
 
         positions.push(px, py, pz);
 
         // UV mapping: map to the sleeve area in the texture
         const uvU = isLeft ? (0.75 + (px - centerX) * 1.5) : (0.25 + (px - centerX) * 1.5);
-        const uvV = 0.70 + (py - 1.28) * 1.2;
+        const uvV = 0.72 + (py - 1.35) * 1.2;
         uvs.push(Math.max(0, Math.min(1, uvU)), Math.max(0, Math.min(1, uvV)));
 
-        // Rigging: 50% Shoulder, 50% Arm at top; 10% Shoulder, 90% Arm at cuff
-        const armWeight = Math.min(1.0, 0.4 + 0.6 * v);
-        skinIndices.push(armJoint, shoulderJoint, SPINE2_IDX, HIPS_IDX);
-        skinWeights.push(armWeight, 1.0 - armWeight, 0, 0);
+        // Rigging: top firmly anchored to shoulder/spine2, lower follows arm
+        let i0 = shoulderJoint, i1 = SPINE2_IDX, i2 = armJoint, i3 = 0;
+        let w0 = 0, w1 = 0, w2 = 0, w3 = 0;
+
+        if (v < 0.35) {
+          // Shoulder cap anchor
+          w0 = 0.60; w1 = 0.30; w2 = 0.10;
+        } else if (v < 0.70) {
+          const t = (v - 0.35) / 0.35;
+          w0 = 0.60 * (1 - t) + 0.25 * t;
+          w1 = 0.30 * (1 - t);
+          w2 = 0.10 * (1 - t) + 0.75 * t;
+        } else {
+          // Lower bicep cuff
+          w0 = 0.20; w1 = 0.0; w2 = 0.80;
+        }
+
+        skinIndices.push(i0, i1, i2, i3);
+        skinWeights.push(w0, w1, w2, w3);
       }
     }
 
@@ -237,13 +269,12 @@ function createFloralPuffDressGeometry() {
   parts.push(makePuffSleeve(false)); // Right puff sleeve
 
   // 1C. Waistband Sash & 3D Tied Bow Knot in Front
+  // Aligned directly onto avatar waistline at Y=1.135, Z=0.155 (flush with waistband)
   {
     const positions = [], uvs = [], skinIndices = [], skinWeights = [], indices = [];
-    const bowCenterY = 1.15;
-    const bowCenterZ = 0.145;
+    const bowCenterY = 1.135;
+    const bowCenterZ = 0.155;
 
-    // Center knot
-    const knotW = 0.024, knotH = 0.028, knotD = 0.022;
     const addBox = (cx, cy, cz, w, h, d, u0, v0) => {
       const startIdx = positions.length / 3;
       const hw = w/2, hh = h/2, hd = d/2;
@@ -254,10 +285,9 @@ function createFloralPuffDressGeometry() {
       corners.forEach(([x, y, z]) => {
         positions.push(cx + x, cy + y, cz + z);
         uvs.push(u0, v0);
-        skinIndices.push(HIPS_IDX, SPINE_IDX, 0, 0);
-        skinWeights.push(0.85, 0.15, 0, 0);
+        skinIndices.push(SPINE_IDX, HIPS_IDX, 0, 0);
+        skinWeights.push(0.60, 0.40, 0, 0);
       });
-      // 6 quad faces
       const faces = [
         [0, 1, 2, 3], [5, 4, 7, 6], // front, back
         [4, 0, 3, 7], [1, 5, 6, 2], // left, right
@@ -270,33 +300,34 @@ function createFloralPuffDressGeometry() {
     };
 
     // Add knot
-    addBox(0, bowCenterY, bowCenterZ, knotW, knotH, knotD, 0.5, 0.62);
+    addBox(0, bowCenterY, bowCenterZ, 0.026, 0.028, 0.018, 0.5, 0.62);
 
     // Left bow loop
-    addBox(0.045, bowCenterY + 0.005, bowCenterZ + 0.005, 0.065, 0.040, 0.024, 0.56, 0.62);
+    addBox(0.040, bowCenterY + 0.003, bowCenterZ + 0.002, 0.052, 0.032, 0.018, 0.56, 0.62);
     // Right bow loop
-    addBox(-0.045, bowCenterY + 0.005, bowCenterZ + 0.005, 0.065, 0.040, 0.024, 0.44, 0.62);
+    addBox(-0.040, bowCenterY + 0.003, bowCenterZ + 0.002, 0.052, 0.032, 0.018, 0.44, 0.62);
 
-    // Left ribbon sash tail (drapes down over skirt)
+    // Left and right ribbon sash tails draping naturally down over skirt
     const addRibbonTail = (startX, dirX) => {
-      const segs = 6;
+      const segs = 8;
       const startIdx = positions.length / 3;
       for (let s = 0; s <= segs; s++) {
         const t = s / segs;
-        const ry = bowCenterY - 0.02 - t * 0.18; // Drapes down to Y=0.95
-        const rx = startX + dirX * t * 0.035;
-        const rz = bowCenterZ + 0.008 - t * 0.015;
-        const rw = 0.028 * (1.0 - t * 0.2);
+        const ry = bowCenterY - 0.015 - t * 0.18; // Drapes down to Y=0.94
+        const rx = startX + dirX * t * 0.030;
+        const rz = bowCenterZ + 0.003 + t * 0.015;
+        const rw = 0.024 * (1.0 - t * 0.15);
 
         positions.push(rx - rw/2, ry, rz);
         positions.push(rx + rw/2, ry, rz);
         uvs.push(0.5 + rx, (ry - 0.55) / 0.95);
         uvs.push(0.5 + rx, (ry - 0.55) / 0.95);
 
-        skinIndices.push(HIPS_IDX, SPINE_IDX, 0, 0);
-        skinIndices.push(HIPS_IDX, SPINE_IDX, 0, 0);
-        skinWeights.push(0.9, 0.1, 0, 0);
-        skinWeights.push(0.9, 0.1, 0, 0);
+        const spineW = Math.max(0.1, 0.6 * (1 - t));
+        skinIndices.push(SPINE_IDX, HIPS_IDX, 0, 0);
+        skinIndices.push(SPINE_IDX, HIPS_IDX, 0, 0);
+        skinWeights.push(spineW, 1.0 - spineW, 0, 0);
+        skinWeights.push(spineW, 1.0 - spineW, 0, 0);
       }
       for (let s = 0; s < segs; s++) {
         const i0 = startIdx + s * 2;
@@ -305,19 +336,19 @@ function createFloralPuffDressGeometry() {
       }
     };
 
-    addRibbonTail(0.018, 0.7);  // Left tail
-    addRibbonTail(-0.018, -0.6); // Right tail
+    addRibbonTail(0.014, 0.6);  // Left tail
+    addRibbonTail(-0.014, -0.6); // Right tail
 
     parts.push(makeRiggedGeometry({ positions, uvs, skinIndices, skinWeights, indices }));
   }
 
   // 1D. 3-Tier Layered Ruffled Skirt
-  // Tier 1 (Waist to Upper Thigh): Y=1.15 to 0.96
-  // Tier 2 (Mid Thigh Ruffle):     Y=0.98 to 0.80
-  // Tier 3 (Lower Flounce Ruffle): Y=0.82 to 0.62
-  function makeSkirtTier({ topY, botY, topRx, topRz, botRx, botRz, pleatCount, pleatDepth, uvVMin, uvVMax }) {
+  // Tier 1 (Waist to Upper Thigh): Y=1.135 to 0.96 (connecting seamlessly with bodice waist)
+  // Tier 2 (Mid Thigh Ruffle):     Y=0.97 to 0.79
+  // Tier 3 (Lower Flounce Ruffle): Y=0.80 to 0.63
+  function makeSkirtTier({ topY, botY, topRx, topRz, botRx, botRz, topCz, botCz, pleatCount, pleatDepth, uvVMin, uvVMax }) {
     const positions = [], uvs = [], skinIndices = [], skinWeights = [], indices = [];
-    const ySegs = 10;
+    const ySegs = 12;
     const radialSegs = 40;
 
     for (let iy = 0; iy <= ySegs; iy++) {
@@ -327,8 +358,8 @@ function createFloralPuffDressGeometry() {
 
       // Exponential flare
       const rx = topRx + (botRx - topRx) * Math.pow(t, 1.25);
-      const rz = topRz + (botRz - topRz) * Math.pow(t, 1.2);
-      const cz = 0.025 * (1 - t * 0.4);
+      const rz = topRz + (botRz - topRz) * Math.pow(t, 1.20);
+      const cz = topCz + (botCz - topCz) * t;
 
       for (let ix = 0; ix <= radialSegs; ix++) {
         const u = ix / radialSegs;
@@ -348,32 +379,34 @@ function createFloralPuffDressGeometry() {
         positions.push(px, py, pz);
 
         // UV: Front orthographic projection with graceful back continuation
-        const uvU = 0.5 + (px / 0.78);
+        const uvU = 0.5 + (px / 0.75);
         const uvV = uvVMin + (uvVMax - uvVMin) * (1 - v);
         uvs.push(Math.max(0, Math.min(1, uvU)), Math.max(0, Math.min(1, uvV)));
 
-        // Skirt Rigging: anchored to Hips, following Thigh strides smoothly
-        const legInfluence = Math.min(0.40, t * 0.40);
-        let i0 = HIPS_IDX, i1 = L_THIGH_IDX, i2 = R_THIGH_IDX, i3 = SPINE_IDX;
+        // Skirt Rigging: anchored to Hips and Waist, following Thigh strides smoothly
+        let i0 = HIPS_IDX, i1 = SPINE_IDX, i2 = L_THIGH_IDX, i3 = R_THIGH_IDX;
         let w0 = 1.0, w1 = 0, w2 = 0, w3 = 0;
 
-        if (px > 0.01) {
-          // Left side
-          i1 = L_THIGH_IDX; i2 = L_KNEE_IDX;
-          w1 = legInfluence * 0.75;
-          w2 = legInfluence * 0.25;
-          w0 = 1.0 - (w1 + w2);
-        } else if (px < -0.01) {
-          // Right side
-          i1 = R_THIGH_IDX; i2 = R_KNEE_IDX;
-          w1 = legInfluence * 0.75;
-          w2 = legInfluence * 0.25;
-          w0 = 1.0 - (w1 + w2);
+        if (py > 1.05) {
+          // Waist transition
+          const wt = (py - 1.05) / 0.085;
+          w1 = wt * 0.45;
+          w0 = 1.0 - w1;
         } else {
-          // Center front / back
-          w1 = legInfluence * 0.5;
-          w2 = legInfluence * 0.5;
-          w0 = 1.0 - (w1 + w2);
+          const legInf = Math.min(0.45, (1.05 - py) * 0.9);
+          if (px > 0.01) {
+            i1 = L_THIGH_IDX; i2 = L_KNEE_IDX;
+            w1 = legInf * 0.75; w2 = legInf * 0.25;
+            w0 = 1.0 - (w1 + w2);
+          } else if (px < -0.01) {
+            i1 = R_THIGH_IDX; i2 = R_KNEE_IDX;
+            w1 = legInf * 0.75; w2 = legInf * 0.25;
+            w0 = 1.0 - (w1 + w2);
+          } else {
+            i1 = L_THIGH_IDX; i2 = R_THIGH_IDX;
+            w1 = legInf * 0.50; w2 = legInf * 0.50;
+            w0 = 1.0 - (w1 + w2);
+          }
         }
 
         skinIndices.push(i0, i1, i2, i3);
@@ -395,31 +428,31 @@ function createFloralPuffDressGeometry() {
     return makeRiggedGeometry({ positions, uvs, skinIndices, skinWeights, indices });
   }
 
-  // Tier 1 (Waist to Upper Thigh)
+  // Tier 1 (Waist to Upper Thigh) - connects directly to bodice at Y=1.135
   parts.push(makeSkirtTier({
-    topY: 1.15, botY: 0.95,
-    topRx: 0.168, topRz: 0.122,
-    botRx: 0.235, botRz: 0.180,
-    pleatCount: 16, pleatDepth: 0.014,
-    uvVMin: 0.40, uvVMax: 0.63
+    topY: 1.135, botY: 0.96,
+    topRx: 0.120, topRz: 0.095, topCz: 0.054,
+    botRx: 0.215, botRz: 0.165, botCz: 0.030,
+    pleatCount: 16, pleatDepth: 0.012,
+    uvVMin: 0.42, uvVMax: 0.63
   }));
 
   // Tier 2 (Mid Thigh Ruffle Flounce)
   parts.push(makeSkirtTier({
-    topY: 0.97, botY: 0.78,
-    topRx: 0.245, topRz: 0.190,
-    botRx: 0.315, botRz: 0.250,
-    pleatCount: 20, pleatDepth: 0.018,
-    uvVMin: 0.20, uvVMax: 0.43
+    topY: 0.97, botY: 0.79,
+    topRx: 0.220, topRz: 0.170, topCz: 0.030,
+    botRx: 0.285, botRz: 0.225, botCz: 0.022,
+    pleatCount: 20, pleatDepth: 0.016,
+    uvVMin: 0.22, uvVMax: 0.44
   }));
 
   // Tier 3 (Bottom Layer Flounce with wavy hem)
   parts.push(makeSkirtTier({
-    topY: 0.80, botY: 0.60,
-    topRx: 0.325, topRz: 0.260,
-    botRx: 0.400, botRz: 0.330,
-    pleatCount: 24, pleatDepth: 0.024,
-    uvVMin: 0.02, uvVMax: 0.23
+    topY: 0.80, botY: 0.63,
+    topRx: 0.290, topRz: 0.230, topCz: 0.022,
+    botRx: 0.355, botRz: 0.285, botCz: 0.015,
+    pleatCount: 24, pleatDepth: 0.022,
+    uvVMin: 0.02, uvVMax: 0.24
   }));
 
   // Merge all garment parts into one unified SkinnedMesh geometry
