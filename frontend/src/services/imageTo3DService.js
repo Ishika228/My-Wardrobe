@@ -302,7 +302,7 @@ export async function convert2DClothTo3D(imageSource, metadata = {}) {
     roughTex.wrapT = THREE.ClampToEdgeWrapping;
     roughTex.needsUpdate = true;
 
-    // Step E: Create 3D Physically-Based Material
+    // Step E: Create 3D Physically-Based Material with alpha cutout to eliminate black cones
     const pbrMaterial = new THREE.MeshPhysicalMaterial({
       color: new THREE.Color('#ffffff'), // preserve 100% true texture fidelity
       map: baseColorTex,
@@ -314,7 +314,10 @@ export async function convert2DClothTo3D(imageSource, metadata = {}) {
       clearcoat,
       clearcoatRoughness,
       envMapIntensity: 1.25,
-      side: THREE.DoubleSide
+      side: THREE.DoubleSide,
+      transparent: true,
+      alphaTest: 0.5,
+      depthWrite: true
     });
 
     return {

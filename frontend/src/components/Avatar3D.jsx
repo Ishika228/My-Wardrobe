@@ -88,13 +88,18 @@ function getLoadedTexture(url) {
 
 /**
  * Builds PBR Material for 3D Garments with zero pitch-black shading & vibrant color fidelity
+ * STRICTLY enables alpha testing on extracted clothing textures so that transparent background
+ * pixels are discarded by the GPU, completely eliminating any black cones or dark artifacts.
  */
 function buildGarmentMaterial(garmentItem, origMat) {
-  if (garmentItem?.cloth3D?.pbrMaterial) {
-    return garmentItem.cloth3D.pbrMaterial;
-  }
-  if (garmentItem?.pbrMaterial) {
-    return garmentItem.pbrMaterial;
+  let existingMat = garmentItem?.cloth3D?.pbrMaterial || garmentItem?.pbrMaterial;
+  if (existingMat) {
+    existingMat.transparent = true;
+    existingMat.alphaTest = 0.5;
+    existingMat.depthWrite = true;
+    existingMat.side = THREE.DoubleSide;
+    existingMat.needsUpdate = true;
+    return existingMat;
   }
 
   const { roughness, metalness, clearcoat, clearcoatRoughness } = getFabricParams(garmentItem);
@@ -142,6 +147,10 @@ function buildGarmentMaterial(garmentItem, origMat) {
       params.map = tex;
       // Use pure white tint so the garment texture retains 100% of its authentic extracted colors without color bleed
       params.color = new THREE.Color('#ffffff');
+      // Cut out transparent background completely to eliminate any black cone / dark shell
+      params.transparent = true;
+      params.alphaTest = 0.5;
+      params.depthWrite = true;
     } catch {
       params.color = new THREE.Color(color);
     }
