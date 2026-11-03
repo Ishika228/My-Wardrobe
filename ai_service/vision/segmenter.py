@@ -139,20 +139,40 @@ def extract_garment(
         skin_mask = detect_skin_mask(img, rect)
         mask[skin_mask > 0] = cv2.GC_BGD
 
-    # 5. Execute GrabCut segmentation with robust fallback
-    bgd_model = np.zeros((1, 65), np.float64)
-    fgd_model = np.zeros((1, 65), np.float64)
-
-    try:
-        cv2.grabCut(img, mask, rect, bgd_model, fgd_model, 5, cv2.GC_INIT_WITH_MASK)
-        binary_mask = np.where((mask == cv2.GC_FGD) | (mask == cv2.GC_PR_FGD), 255, 0).astype("uint8")
-    except Exception as gc_err:
-        print(f"[Segmenter] GrabCut notice: {gc_err}, falling back to color-distance segmentation")
-        binary_mask = np.where(color_diff >= 22.0, 255, 0).astype("uint8")
-        binary_mask[:border_px, :] = 0
-        binary_mask[-border_px:, :] = 0
-        binary_mask[:, :border_px] = 0
-        binary_mask[:, -border_px:] = 0
+    # 5. Execute GrabCut segmentation with fast multi-scale processing & robust fallback
+    max_dim = 640
+    if max(orig_h, orig_w) > max_dim:
+        scale = max_dim / float(max(orig_h, orig_w))
+        sw, sh = max(1, int(orig_w * scale)), max(1, int(orig_h * scale))
+        small_img = cv2.resize(img, (sw, sh), interpolation=cv2.INTER_AREA)
+        small_mask = cv2.resize(mask, (sw, sh), interpolation=cv2.INTER_NEAREST)
+        s_rect = (int(rx * scale), int(ry * scale), max(1, int(rw * scale)), max(1, int(rh * scale)))
+        s_bgd = np.zeros((1, 65), np.float64)
+        s_fgd = np.zeros((1, 65), np.float64)
+        try:
+            cv2.grabCut(small_img, small_mask, s_rect, s_bgd, s_fgd, 4, cv2.GC_INIT_WITH_MASK)
+            mask = cv2.resize(small_mask, (orig_w, orig_h), interpolation=cv2.INTER_NEAREST)
+            binary_mask = np.where((mask == cv2.GC_FGD) | (mask == cv2.GC_PR_FGD), 255, 0).astype("uint8")
+        except Exception as gc_err:
+            print(f"[Segmenter] GrabCut notice: {gc_err}, falling back to color-distance segmentation")
+            binary_mask = np.where(color_diff >= 22.0, 255, 0).astype("uint8")
+            binary_mask[:border_px, :] = 0
+            binary_mask[-border_px:, :] = 0
+            binary_mask[:, :border_px] = 0
+            binary_mask[:, -border_px:] = 0
+    else:
+        bgd_model = np.zeros((1, 65), np.float64)
+        fgd_model = np.zeros((1, 65), np.float64)
+        try:
+            cv2.grabCut(img, mask, rect, bgd_model, fgd_model, 4, cv2.GC_INIT_WITH_MASK)
+            binary_mask = np.where((mask == cv2.GC_FGD) | (mask == cv2.GC_PR_FGD), 255, 0).astype("uint8")
+        except Exception as gc_err:
+            print(f"[Segmenter] GrabCut notice: {gc_err}, falling back to color-distance segmentation")
+            binary_mask = np.where(color_diff >= 22.0, 255, 0).astype("uint8")
+            binary_mask[:border_px, :] = 0
+            binary_mask[-border_px:, :] = 0
+            binary_mask[:, :border_px] = 0
+            binary_mask[:, -border_px:] = 0
 
     # Fallback if GrabCut produced too few pixels
     if np.count_nonzero(binary_mask) < (orig_h * orig_w * 0.02):

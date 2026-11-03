@@ -271,7 +271,7 @@ export async function getWardrobe(token) {
  * Add a new clothing item to the backend wardrobe.
  * Returns the created item's ID and the mapped frontend product.
  */
-export async function addClothingItem(token, { name, category, color, brand, description, size, tags }) {
+export async function addClothingItem(token, { name, category, color, brand, description, size, tags, imageUrl, model3d }) {
   let authToken = token || (await ensureAuth());
   if (!authToken) throw new Error('Not logged in and could not auto-authenticate');
 
@@ -285,22 +285,26 @@ export async function addClothingItem(token, { name, category, color, brand, des
     accessories: 'Accessories'
   };
 
+  const payload = {
+    name:        name || 'Uploaded Garment',
+    category:    backendCatMap[category] || 'Other',
+    color:       color || '#9e7bb5',
+    brand:       brand || 'My Closet',
+    description: description || 'Uploaded from WardrobeWise virtual room.',
+    size:        size || 'M',
+    tags:        tags || [],
+    price:       110
+  };
+  if (imageUrl) payload.imageUrl = imageUrl;
+  if (model3d) payload.model3d = model3d;
+
   const res = await fetch(`${BACKEND_URL}/api/clothes`, {
     method:  'POST',
     headers: {
       'Authorization': `Bearer ${authToken}`,
       'Content-Type':  'application/json'
     },
-    body: JSON.stringify({
-      name:        name || 'Uploaded Garment',
-      category:    backendCatMap[category] || 'Other',
-      color:       color || '#9e7bb5',
-      brand:       brand || 'My Closet',
-      description: description || 'Uploaded from WardrobeWise virtual room.',
-      size:        size || 'M',
-      tags:        tags || [],
-      price:       110
-    })
+    body: JSON.stringify(payload)
   });
   const data = await res.json();
   if (!res.ok || !data.data) {

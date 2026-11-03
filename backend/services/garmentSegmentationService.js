@@ -55,7 +55,7 @@ export const segmentGarmentImage = async (
     const response = await fetch(`${AI_SERVICE_URL}/api/ai/segment-garment`, {
       method: 'POST',
       body: formData,
-      signal: AbortSignal.timeout(12000),
+      signal: AbortSignal.timeout(35000),
     });
 
     if (response.ok) {
@@ -106,7 +106,7 @@ print(json.dumps(res))
     const pyProc = spawnSync('python', ['-c', pyScript], {
       cwd: path.resolve('..'),
       encoding: 'utf-8',
-      timeout: 15000,
+      timeout: 35000,
     });
 
     if (pyProc.error || pyProc.status !== 0) {

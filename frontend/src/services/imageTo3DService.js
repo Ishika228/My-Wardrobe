@@ -70,13 +70,22 @@ export function processGarmentSilhouette(img, targetWidth = 1024, targetHeight =
   const imgData = ctx.getImageData(0, 0, targetWidth, targetHeight);
   const data = imgData.data;
 
-  // Check if image already has native transparent pixels (e.g. clean extracted PNG)
+  // Check if image itself has native transparent pixels inside its drawn bounds
   let hasTransparentPixels = false;
-  for (let i = 3; i < data.length; i += 4) {
-    if (data[i] < 240) {
-      hasTransparentPixels = true;
-      break;
+  const startX = Math.floor(drawX + 6);
+  const endX = Math.floor(drawX + drawW - 6);
+  const startY = Math.floor(drawY + 6);
+  const endY = Math.floor(drawY + drawH - 6);
+
+  for (let y = startY; y < endY; y += 4) {
+    for (let x = startX; x < endX; x += 4) {
+      const alpha = data[(y * targetWidth + x) * 4 + 3];
+      if (alpha < 240) {
+        hasTransparentPixels = true;
+        break;
+      }
     }
+    if (hasTransparentPixels) break;
   }
 
   if (hasTransparentPixels) {

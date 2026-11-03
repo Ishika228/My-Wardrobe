@@ -588,13 +588,10 @@ export default function App() {
       }));
     } catch (extractErr) {
       console.warn('[Garment Extraction Notice]:', extractErr.message);
-      // Graceful fallback to local image if microservice is starting up
       setExtractionModal((prev) => ({
         ...prev,
-        stage: 'preview',
-        extractedImage: localImageUrl,
-        maskImage: null,
-        geminiData: null,
+        stage: 'error',
+        errorMessage: extractErr.message || 'Garment background removal encountered an issue. Please try again.',
       }));
     }
 
@@ -740,17 +737,13 @@ export default function App() {
             description: readyItem.description,
             size:        'M',
             tags:        detectedTags,
+            imageUrl:    extractionModal.extractedImage || displayImg,
             model3d:     readyItem.model3d || undefined
           });
 
           if (savedBackendItem?.backendId) {
             readyItem.backendId = savedBackendItem.backendId;
             readyItem.id = `backend_${savedBackendItem.backendId}`;
-
-            const imageResult = await uploadClothingImage(token, savedBackendItem.backendId, file);
-            if (imageResult?.image) {
-              readyItem.image = imageResult.image;
-            }
           }
 
           const freshList = await getWardrobe(token);
