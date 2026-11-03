@@ -138,7 +138,7 @@ function buildGarmentMaterial(garmentItem, origMat) {
     try {
       const tex = getLoadedTexture(imageSrc);
       params.map = tex;
-      params.color = new THREE.Color('#ffffff');
+      params.color = new THREE.Color(color);
     } catch {
       params.color = new THREE.Color(color);
     }
@@ -171,14 +171,32 @@ export default function Avatar3D({
   const topCasualGltf = useGLTF('/models/garments/top_casual.glb');
   const trouserJeansGltf = useGLTF('/models/garments/trouser_jeans.glb');
 
-  // Retarget Mixamo animation tracks to match ReadyPlayerMe avatar bones (strip mixamorig: prefix)
+  // Retarget Mixamo animation tracks to match ReadyPlayerMe avatar bones
+  // CRITICAL FIX: Mixamo animations contain translation tracks in centimeters (Hips Y=102.83, Spine Y=10.18).
+  // Applying position tracks directly on a meter-scale ReadyPlayerMe skeleton shoots the bones 100 meters into the sky!
+  // By discarding position and scale tracks and keeping pure rotation (quaternion) tracks,
+  // the avatar preserves its exact anatomical ReadyPlayerMe bone lengths and stands grounded on the showroom floor.
   const retargetedAnimations = useMemo(() => {
     if (!animsGltf?.animations || animsGltf.animations.length === 0) return [];
     return animsGltf.animations.map((clip) => {
       const cloned = clip.clone();
+      const cleanTracks = [];
+
       cloned.tracks.forEach((track) => {
-        track.name = track.name.replace(/^mixamorig:?/, '');
+        const cleanName = track.name.replace(/^mixamorig:?/, '');
+
+        // 1. Discard scale tracks
+        if (cleanName.endsWith('.scale')) return;
+
+        // 2. Discard all translation/position tracks (humanoid bones have fixed lengths; only rotations drive poses)
+        if (cleanName.endsWith('.position')) return;
+
+        // 3. Keep all rotation/quaternion tracks
+        track.name = cleanName;
+        cleanTracks.push(track);
       });
+
+      cloned.tracks = cleanTracks;
       return cloned;
     });
   }, [animsGltf]);
@@ -310,12 +328,21 @@ export default function Avatar3D({
     }
   }, [isWalking, actions]);
 
-  // ── Procedural Eye Blinking & Facial Micro-expressions ────────────────────
+  // ── Procedural Eye Blinking & Natural Breathing ───────────────────────────
   const blinkTimerRef = useRef(0);
   const nextBlinkIntervalRef = useRef(3.5);
 
   useFrame((state, delta) => {
-    const { head } = meshesRef.current;
+    const { head, bones } = meshesRef.current;
+    const t = state.clock.getElapsedTime();
+
+    // 1. Keep Hips firmly anchored at natural standing height with organic breathing (±3 mm)
+    if (bones?.['Hips']) {
+      const breathe = Math.sin(t * 1.8) * 0.003;
+      bones['Hips'].position.set(0, 1.03696 + breathe, 0.0404);
+    }
+
+    // 2. Procedural Eye Blinking & Facial Micro-expressions
     if (head?.morphTargetDictionary && head?.morphTargetInfluences) {
       const dict = head.morphTargetDictionary;
       const infl = head.morphTargetInfluences;
@@ -378,7 +405,7 @@ export default function Avatar3D({
         const bone = bones[bName];
         if (bone) bone.scale.set(1, 1, 1);
       });
-      const defaultSkin = new THREE.Color('#fbe2d3');
+      const defaultSkin = new THREE.Color('#ffffff');
       if (head?.material) {
         head.material.color = defaultSkin;
         head.material.needsUpdate = true;

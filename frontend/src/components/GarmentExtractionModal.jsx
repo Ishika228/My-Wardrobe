@@ -465,3 +465,4 @@ export default function GarmentExtractionModal({
     </div>
   );
 }
+

@@ -201,3 +201,4 @@ def extract_garment(
         "output_path": output_path or "",
         "mask_path": mask_path or "",
     }
+
