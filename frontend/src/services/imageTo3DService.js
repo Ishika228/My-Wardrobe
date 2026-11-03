@@ -41,15 +41,18 @@ export function loadImageElement(source) {
   });
 }
 
-// 1. Adaptive Silhouette Extraction & Color Preservation
-export function processGarmentSilhouette(img, targetWidth = 1024, targetHeight = 1024, fallbackHex = '#e5779c') {
+// 1. Adaptive Silhouette Extraction & True Alpha Transparency Preservation
+export function processGarmentSilhouette(img, targetWidth = 1024, targetHeight = 1024, fallbackHex = null) {
   const canvas = document.createElement('canvas');
   canvas.width = targetWidth;
   canvas.height = targetHeight;
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
+  // Start with a 100% transparent canvas (never fill with opaque pink or background color!)
+  ctx.clearRect(0, 0, targetWidth, targetHeight);
+
   // Calculate aspect-preserving fit centered in UV space
-  const imgAspect = img.width / img.height;
+  const imgAspect = img.width / Math.max(1, img.height);
   let drawW = targetWidth * 0.90;
   let drawH = drawW / imgAspect;
 
@@ -61,17 +64,36 @@ export function processGarmentSilhouette(img, targetWidth = 1024, targetHeight =
   const drawX = (targetWidth - drawW) / 2;
   const drawY = (targetHeight - drawH) / 2;
 
-  // Pre-fill canvas with the garment's primary fabric color so edges never render as black!
-  ctx.fillStyle = fallbackHex;
-  ctx.fillRect(0, 0, targetWidth, targetHeight);
-
-  // Draw original clothing image
+  // Draw garment image
   ctx.drawImage(img, drawX, drawY, drawW, drawH);
 
   const imgData = ctx.getImageData(0, 0, targetWidth, targetHeight);
   const data = imgData.data;
 
-  // Sample the 4 corners of the drawn image region to detect studio backdrop (whether dark grey, white, etc.)
+  // Check if image already has native transparent pixels (e.g. clean extracted PNG)
+  let hasTransparentPixels = false;
+  for (let i = 3; i < data.length; i += 4) {
+    if (data[i] < 240) {
+      hasTransparentPixels = true;
+      break;
+    }
+  }
+
+  if (hasTransparentPixels) {
+    // Zero out RGB on transparent pixels to guarantee zero halos/bleeding
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i + 3] < 15) {
+        data[i] = 0;
+        data[i + 1] = 0;
+        data[i + 2] = 0;
+        data[i + 3] = 0;
+      }
+    }
+    ctx.putImageData(imgData, 0, 0);
+    return { canvas, ctx, drawX, drawY, drawW, drawH };
+  }
+
+  // If opaque image without alpha: sample outer corners to detect backdrop color
   const cX0 = Math.floor(Math.max(0, drawX + 3));
   const cX1 = Math.floor(Math.min(targetWidth - 1, drawX + drawW - 4));
   const cY0 = Math.floor(Math.max(0, drawY + 3));
@@ -86,34 +108,26 @@ export function processGarmentSilhouette(img, targetWidth = 1024, targetHeight =
   const bgG = (data[p1 + 1] + data[p2 + 1] + data[p3 + 1] + data[p4 + 1]) / 4;
   const bgB = (data[p1 + 2] + data[p2 + 2] + data[p3 + 2] + data[p4 + 2]) / 4;
 
-  // Parse fallback fabric color
-  let fbR = 229, fbG = 119, fbB = 156;
-  if (fallbackHex && fallbackHex.startsWith('#') && fallbackHex.length >= 7) {
-    fbR = parseInt(fallbackHex.substring(1, 3), 16) || 229;
-    fbG = parseInt(fallbackHex.substring(3, 5), 16) || 119;
-    fbB = parseInt(fallbackHex.substring(5, 7), 16) || 156;
-  }
-
-  // Smoothly blend background pixels into matching fabric color
+  // Make background pixels genuinely transparent with smooth edge feathering
   for (let i = 0; i < data.length; i += 4) {
     const r = data[i];
     const g = data[i + 1];
     const b = data[i + 2];
 
     const dist = Math.sqrt((r - bgR) ** 2 + (g - bgG) ** 2 + (b - bgB) ** 2);
-    if (dist < 24) {
-      // Background: replace with fabric tone
-      data[i]     = fbR;
-      data[i + 1] = fbG;
-      data[i + 2] = fbB;
-      data[i + 3] = 255;
-    } else if (dist < 48) {
-      // Anti-aliased feather
-      const t = (dist - 24) / 24;
-      data[i]     = Math.round(r * t + fbR * (1 - t));
-      data[i + 1] = Math.round(g * t + fbG * (1 - t));
-      data[i + 2] = Math.round(b * t + fbB * (1 - t));
-      data[i + 3] = 255;
+    if (dist < 22) {
+      // True background: 100% transparent, RGB zeroed
+      data[i] = 0;
+      data[i + 1] = 0;
+      data[i + 2] = 0;
+      data[i + 3] = 0;
+    } else if (dist < 36) {
+      // Smooth alpha edge transition
+      const alphaFraction = (dist - 22) / 14;
+      data[i] = Math.round(r * alphaFraction);
+      data[i + 1] = Math.round(g * alphaFraction);
+      data[i + 2] = Math.round(b * alphaFraction);
+      data[i + 3] = Math.round(255 * alphaFraction);
     }
   }
 

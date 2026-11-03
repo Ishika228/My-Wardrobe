@@ -160,8 +160,8 @@ Note: bounding box coordinates must be normalized integers from 0 to 1000.`;
   const skirt = (parsed.skirt || '').toLowerCase();
   const name = (parsed.name || '').toLowerCase();
 
-  let targetModelUrl = '/models/garments/dress_floral_puff.glb';
-  let finalSilhouette = 'floral-puff';
+  let targetModelUrl = '/models/garments/dress_slip.glb';
+  let finalSilhouette = 'slip-dress';
 
   if (cat === 'trousers' || cat === 'bottom' || sil.includes('jean') || name.includes('jean')) {
     targetModelUrl = '/models/garments/trouser_jeans.glb';

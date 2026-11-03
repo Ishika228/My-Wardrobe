@@ -193,8 +193,8 @@ export const generateGarment3D = async (req, res, next) => {
     }
 
     // Fallback model selection
-    const targetModelUrl = geminiAnalysis?.targetModelUrl || '/models/garments/dress_floral_puff.glb';
-    const finalSilhouette = geminiAnalysis?.silhouette || 'floral-puff';
+    const targetModelUrl = geminiAnalysis?.targetModelUrl || '/models/garments/dress_slip.glb';
+    const finalSilhouette = geminiAnalysis?.silhouette || 'slip-dress';
     const taskId = `gemini_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 
     // Store in memory cache

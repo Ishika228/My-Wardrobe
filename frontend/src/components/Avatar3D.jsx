@@ -74,8 +74,9 @@ function resolveColor(raw) {
 const textureCache = {};
 function getLoadedTexture(url) {
   if (!textureCache[url]) {
-    const tex = new THREE.TextureLoader().load(url);
-    tex.crossOrigin = 'anonymous';
+    const loader = new THREE.TextureLoader();
+    loader.setCrossOrigin('anonymous');
+    const tex = loader.load(url);
     tex.wrapS = THREE.ClampToEdgeWrapping;
     tex.wrapT = THREE.ClampToEdgeWrapping;
     tex.repeat.set(1, 1);
@@ -102,15 +103,16 @@ function buildGarmentMaterial(garmentItem, origMat) {
                    garmentItem?.colors?.[0]?.hex || '#ffffff';
   const color = resolveColor(rawColor);
 
+  const itemId = (garmentItem?.id || '').toLowerCase();
   const name = (garmentItem?.name || '').toLowerCase();
   const imageSrc = garmentItem?.image || '';
+
+  // Only the authentic catalog floral puff dress should receive the pink floral texture
   const isFloralOrPuff =
-    name.includes('floral') ||
-    name.includes('frock') ||
-    name.includes('puff') ||
-    (garmentItem?.tags || []).some((t) => t.includes('floral') || t.includes('ruffle')) ||
-    imageSrc.includes('db8de5a8') ||
-    imageSrc.includes('upload_68248f90') ||
+    itemId === 'dress-floral-puff' ||
+    name === 'vintage floral puff-sleeve frock' ||
+    name === 'pink floral puff dress' ||
+    (name.includes('floral') && name.includes('puff')) ||
     imageSrc.includes('pink_dress');
 
   const params = {
@@ -132,13 +134,14 @@ function buildGarmentMaterial(garmentItem, origMat) {
   }
 
   const hasRealImage = imageSrc && typeof imageSrc === 'string' &&
-                       (imageSrc.startsWith('http') || imageSrc.startsWith('blob:') || imageSrc.startsWith('/'));
+                       (imageSrc.startsWith('http') || imageSrc.startsWith('blob:') || imageSrc.startsWith('/') || imageSrc.startsWith('data:'));
 
   if (hasRealImage) {
     try {
       const tex = getLoadedTexture(imageSrc);
       params.map = tex;
-      params.color = new THREE.Color(color);
+      // Use pure white tint so the garment texture retains 100% of its authentic extracted colors without color bleed
+      params.color = new THREE.Color('#ffffff');
     } catch {
       params.color = new THREE.Color(color);
     }
@@ -161,6 +164,7 @@ export default function Avatar3D({
 }) {
   const groupRef = useRef();
   const activeDressRef = useRef(null);
+  const tryOnSeqRef = useRef(0);
 
   // Load avatar and authentic 3D garment GLB assets
   const avatarGltf = useGLTF('/models/female_avatar.glb');
@@ -195,18 +199,18 @@ export default function Avatar3D({
 
   const meshesRef = useRef({
     top: null, bottom: null, shoes: null, body: null, head: null, hair: null,
-    eyes: [], glasses: null, bones: {}, restQuaternions: {},
+    eyes: [], glasses: null, bones: {}, restQuaternions: {}, restPositions: {},
     origTopMat: null, origBottomMat: null, origShoesMat: null,
   });
 
-  // Clone avatar scene safely with SkeletonUtils and capture native rest quaternions
+  // Clone avatar scene safely with SkeletonUtils and capture native rest quaternions & positions
   const avatarScene = useMemo(() => {
     if (!avatarGltf?.scene) return null;
     const clone = SkeletonUtils.clone(avatarGltf.scene);
 
     const disc = {
       top: null, bottom: null, shoes: null, body: null, head: null, hair: null,
-      eyes: [], glasses: null, bones: {}, restQuaternions: {},
+      eyes: [], glasses: null, bones: {}, restQuaternions: {}, restPositions: {},
       origTopMat: null, origBottomMat: null, origShoesMat: null,
     };
 
@@ -214,6 +218,7 @@ export default function Avatar3D({
       if (child.isBone) {
         disc.bones[child.name] = child;
         disc.restQuaternions[child.name] = child.quaternion.clone();
+        disc.restPositions[child.name] = child.position.clone();
       }
 
       if (child.isMesh || child.isSkinnedMesh) {
@@ -280,43 +285,44 @@ export default function Avatar3D({
   const nextBlinkIntervalRef = useRef(3.5);
 
   useFrame((state, delta) => {
-    const { head, bones, restQuaternions } = meshesRef.current;
+    const { head, bones, restQuaternions, restPositions } = meshesRef.current;
     if (!bones || !restQuaternions || Object.keys(bones).length === 0) return;
     const t = state.clock.getElapsedTime();
 
-    const setBoneRel = (boneName, ax, ay, az, angle) => {
+    const applyRelativeRotation = (boneName, ex, ey, ez) => {
       const bone = bones[boneName];
       const rest = restQuaternions[boneName];
       if (!bone || !rest) return;
-      const deltaQ = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(ax, ay, az), angle);
-      bone.quaternion.copy(rest).multiply(deltaQ);
+      const rot = new THREE.Quaternion().setFromEuler(new THREE.Euler(ex, ey, ez, 'XYZ'));
+      bone.quaternion.copy(rest).multiply(rot);
     };
 
     if (isWalking) {
       // Fluid walking locomotion
-      walkPhaseRef.current += delta * 7.5;
+      walkPhaseRef.current += delta * 7.2;
       const p = walkPhaseRef.current;
-      const strideL = Math.sin(p) * 0.32;
-      const strideR = Math.sin(p + Math.PI) * 0.32;
+      const strideL = Math.sin(p) * 0.36;
+      const strideR = Math.sin(p + Math.PI) * 0.36;
       const kneeL = Math.max(0, -Math.sin(p)) * 0.45;
       const kneeR = Math.max(0, -Math.sin(p + Math.PI)) * 0.45;
 
-      // Leg stride along local X pitch axis (legs swing forward and back, staying down!)
-      setBoneRel('LeftUpLeg', 1, 0, 0, strideL);
-      setBoneRel('RightUpLeg', 1, 0, 0, strideR);
-      setBoneRel('LeftLeg', 1, 0, 0, -kneeL);
-      setBoneRel('RightLeg', 1, 0, 0, -kneeR);
+      // Leg stride: feet swing forward and back, staying down near the floor
+      applyRelativeRotation('LeftUpLeg', strideL, 0, -0.02);
+      applyRelativeRotation('RightUpLeg', strideR, 0, 0.02);
+      applyRelativeRotation('LeftLeg', -kneeL, 0, 0);
+      applyRelativeRotation('RightLeg', -kneeR, 0, 0);
 
       // Arm swing in counter-cadence with legs
-      setBoneRel('LeftArm', 1, 0, 0, 0.28 + strideR * 0.25);
-      setBoneRel('RightArm', 1, 0, 0, 0.28 + strideL * 0.25);
-      setBoneRel('LeftForeArm', 1, 0, 0, 0.08);
-      setBoneRel('RightForeArm', 1, 0, 0, 0.08);
+      applyRelativeRotation('LeftArm', strideR * 0.35, 0, -1.05);
+      applyRelativeRotation('RightArm', strideL * 0.35, 0, 1.05);
+      applyRelativeRotation('LeftForeArm', 0, 0, -0.25);
+      applyRelativeRotation('RightForeArm', 0, 0, 0.25);
 
       if (bones['Hips']) {
         const bob = Math.abs(Math.sin(p)) * 0.015;
-        bones['Hips'].position.set(0, 1.03696 + bob, 0.0404);
-        setBoneRel('Hips', 0, 1, 0, Math.sin(p) * 0.03);
+        const restY = restPositions?.['Hips']?.y || 1.03696;
+        bones['Hips'].position.set(0, restY + bob, 0.0404);
+        applyRelativeRotation('Hips', 0, Math.sin(p) * 0.03, 0);
       }
     } else {
       // Natural standing model posture: straight legs grounded on floor, arms relaxed down at sides
@@ -324,27 +330,28 @@ export default function Avatar3D({
       const breathe = Math.sin(t * 1.8) * 0.003;
       const sway = Math.sin(t * 0.9) * 0.008;
 
-      // Legs stand straight down on the floor
-      setBoneRel('LeftUpLeg', 1, 0, 0, 0);
-      setBoneRel('RightUpLeg', 1, 0, 0, 0);
-      setBoneRel('LeftLeg', 1, 0, 0, 0);
-      setBoneRel('RightLeg', 1, 0, 0, 0);
+      // Legs stand straight down grounded on the floor
+      applyRelativeRotation('LeftUpLeg', 0.02, 0, -0.02);
+      applyRelativeRotation('RightUpLeg', -0.02, 0, 0.02);
+      applyRelativeRotation('LeftLeg', 0, 0, 0);
+      applyRelativeRotation('RightLeg', 0, 0, 0);
 
-      // Arms relaxed naturally down along the torso
-      setBoneRel('LeftArm', 1, 0, 0, 0.28 + sway * 0.2);
-      setBoneRel('RightArm', 1, 0, 0, 0.28 - sway * 0.2);
-      setBoneRel('LeftForeArm', 1, 0, 0, 0.08);
-      setBoneRel('RightForeArm', 1, 0, 0, 0.08);
+      // Arms relaxed naturally down along torso with subtle breathing movement
+      applyRelativeRotation('LeftArm', breathe * 0.3, 0, -1.08 + sway);
+      applyRelativeRotation('RightArm', breathe * 0.3, 0, 1.08 - sway);
+      applyRelativeRotation('LeftForeArm', 0, 0, -0.25);
+      applyRelativeRotation('RightForeArm', 0, 0, 0.25);
 
       // Subtle chest & spine breathing
-      setBoneRel('Spine', 1, 0, 0, breathe * 2.0);
-      setBoneRel('Spine1', 1, 0, 0, breathe * 1.5);
-      setBoneRel('Spine2', 1, 0, 0, breathe * 1.0);
-      setBoneRel('Neck', 0, 1, 0, Math.sin(t * 0.6) * 0.02);
+      applyRelativeRotation('Spine', breathe * 0.4, sway * 0.3, 0);
+      applyRelativeRotation('Spine1', breathe * 0.6, 0, 0);
+      applyRelativeRotation('Spine2', breathe * 0.4, 0, 0);
+      applyRelativeRotation('Neck', -breathe * 0.3, Math.sin(t * 0.6) * 0.02, 0);
 
       if (bones['Hips']) {
-        bones['Hips'].position.set(0, 1.03696 + breathe, 0.0404);
-        setBoneRel('Hips', 0, 0, 1, sway * 0.5);
+        const restY = restPositions?.['Hips']?.y || 1.03696;
+        bones['Hips'].position.set(0, restY + breathe * 0.5, 0.0404);
+        applyRelativeRotation('Hips', 0, sway * 0.5, 0);
       }
     }
 
@@ -423,7 +430,7 @@ export default function Avatar3D({
     }
   }, [mode, personalizedProfile, avatarScene]);
 
-  // ── Outfit Application & Auto-Rigging Engine ──────────────────────────────
+  // ── Outfit Application & Auto-Rigging Engine (Replacement-Based Try-On) ──
   useEffect(() => {
     if (!avatarScene) return;
 
@@ -433,14 +440,30 @@ export default function Avatar3D({
     } = meshesRef.current;
 
     let isDisposed = false;
+    const currentSeq = ++tryOnSeqRef.current;
 
-    // 1. Cleanly remove previous active live dress mesh
-    if (activeDressRef.current) {
-      avatarScene.remove(activeDressRef.current);
-      if (activeDressRef.current.geometry) activeDressRef.current.geometry.dispose?.();
-      if (activeDressRef.current.material) activeDressRef.current.material.dispose?.();
+    // Helper: Completely purge, unparent, and dispose ANY existing try-on dress mesh from scene graph
+    const cleanAllAttachedDresses = () => {
+      const toRemove = [];
+      avatarScene.traverse((c) => {
+        if (c.name === 'Avatar_Active_Dress' || c.userData?.isTryOnGarment) {
+          toRemove.push(c);
+        }
+      });
+      toRemove.forEach((m) => {
+        m.parent?.remove(m);
+        m.geometry?.dispose?.();
+        if (Array.isArray(m.material)) {
+          m.material.forEach((mat) => mat?.dispose?.());
+        } else {
+          m.material?.dispose?.();
+        }
+      });
       activeDressRef.current = null;
-    }
+    };
+
+    // 1. Immediately remove any existing dress so that only ONE garment is ever worn
+    cleanAllAttachedDresses();
 
     const isIndianEthnic =
       outfit?.dress?.category === 'indian_ethnic' ||
@@ -456,17 +479,15 @@ export default function Avatar3D({
       const dressItem = outfit.dress || outfit.top;
       const itemName = (dressItem?.name || '').toLowerCase();
       const itemSil = (dressItem?.silhouette || '').toLowerCase();
-      const itemTags = (dressItem?.tags || []).map((t) => t.toLowerCase());
 
+      // Only true floral puff dresses get the floral puff archetype; plain dresses (e.g. brown dress) get slip-dress
       const isFloralOrPuff =
-        itemSil.includes('puff') ||
-        itemSil.includes('floral') ||
-        itemName.includes('floral') ||
-        itemName.includes('frock') ||
-        itemName.includes('puff') ||
-        itemName.includes('ruffle') ||
-        itemName.includes('pink') ||
-        itemTags.some((t) => t.includes('floral') || t.includes('ruffle') || t.includes('custom') || t.includes('uploaded')) ||
+        dressItem?.id === 'dress-floral-puff' ||
+        itemSil === 'floral-puff' ||
+        itemSil === 'puff' ||
+        itemName === 'vintage floral puff-sleeve frock' ||
+        itemName === 'pink floral puff dress' ||
+        (itemName.includes('floral') && itemName.includes('puff')) ||
         dressItem?.cloth3D?.modelKey === 'floral_puff';
 
       let targetGeom = garmentGeometries.slip;
@@ -485,14 +506,15 @@ export default function Avatar3D({
       if (customGlbUrl && top?.skeleton) {
         loadAndRigGlbGarment(customGlbUrl, top.skeleton, top.bindMatrix, 'dress', dressMat)
           .then((riggedMesh) => {
-            if (isDisposed) {
+            if (isDisposed || tryOnSeqRef.current !== currentSeq) {
               riggedMesh.geometry?.dispose?.();
+              if (Array.isArray(riggedMesh.material)) riggedMesh.material.forEach((m) => m?.dispose?.());
+              else riggedMesh.material?.dispose?.();
               return;
             }
-            if (activeDressRef.current) {
-              avatarScene.remove(activeDressRef.current);
-            }
+            cleanAllAttachedDresses();
             riggedMesh.name = 'Avatar_Active_Dress';
+            riggedMesh.userData.isTryOnGarment = true;
             avatarScene.add(riggedMesh);
             activeDressRef.current = riggedMesh;
 
@@ -502,9 +524,12 @@ export default function Avatar3D({
           })
           .catch((err) => {
             console.warn('[Avatar3D] Could not load custom GLB, using procedural fallback:', err.message);
-            if (targetGeom && !isDisposed) {
+            if (isDisposed || tryOnSeqRef.current !== currentSeq) return;
+            cleanAllAttachedDresses();
+            if (targetGeom && top?.skeleton) {
               const dressSkinnedMesh = new THREE.SkinnedMesh(targetGeom.clone(), dressMat);
               dressSkinnedMesh.name = 'Avatar_Active_Dress';
+              dressSkinnedMesh.userData.isTryOnGarment = true;
               dressSkinnedMesh.bind(top.skeleton, top.bindMatrix);
               dressSkinnedMesh.castShadow = true;
               dressSkinnedMesh.receiveShadow = true;
@@ -517,8 +542,10 @@ export default function Avatar3D({
           });
       } else if (targetGeom && top?.skeleton) {
         // Direct authentic SkinnedMesh binding
+        cleanAllAttachedDresses();
         const dressSkinnedMesh = new THREE.SkinnedMesh(targetGeom.clone(), dressMat);
         dressSkinnedMesh.name = 'Avatar_Active_Dress';
+        dressSkinnedMesh.userData.isTryOnGarment = true;
         dressSkinnedMesh.bind(top.skeleton, top.bindMatrix);
         dressSkinnedMesh.castShadow = true;
         dressSkinnedMesh.receiveShadow = true;
@@ -532,7 +559,9 @@ export default function Avatar3D({
         if (bottom) bottom.visible = false;
       }
     } else {
-      // ── SEPARATE PIECES (Tops & Trousers) ──
+      // ── SEPARATE PIECES (Tops & Trousers): Ensure any active dress is completely removed ──
+      cleanAllAttachedDresses();
+
       // Show separate top and bottom skinned meshes
       if (top) {
         if (outfit?.top) {
@@ -568,6 +597,7 @@ export default function Avatar3D({
 
     return () => {
       isDisposed = true;
+      tryOnSeqRef.current++;
     };
   }, [outfit, avatarScene, garmentGeometries]);
 

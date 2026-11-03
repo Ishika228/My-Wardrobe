@@ -681,7 +681,11 @@ export default function App() {
         detectedName.toLowerCase().includes('floral') ||
         detectedName.toLowerCase().includes('frock') ||
         detectedName.toLowerCase().includes('puff') ||
-        detectedCategory === 'dresses';
+        (detectedTags || []).some((t) => (t || '').toLowerCase().includes('floral') || (t || '').toLowerCase().includes('puff'));
+
+      const defaultDressModel = isFloralOrPuff
+        ? '/models/garments/dress_floral_puff.glb'
+        : '/models/garments/dress_slip.glb';
 
       let readyItem = {
         id: `custom-${Date.now()}`,
@@ -709,7 +713,7 @@ export default function App() {
         extractedImage: displayImg,
         pbrMaterial: convertedPbr,
         cloth3D: convertedCloth3D,
-        modelUrl: cloud3DResult?.modelUrl || (isFloralOrPuff ? '/models/garments/dress_floral_puff.glb' : null),
+        modelUrl: cloud3DResult?.modelUrl || (detectedCategory === 'dresses' ? defaultDressModel : null),
         model3d: cloud3DResult,
       };
 

@@ -234,8 +234,8 @@ export const createSimulatedTask = (category = 'dress', originalImage = '') => {
   const taskId = `sim_tripo_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
   const cat = (category || '').toLowerCase();
 
-  let targetGlb = 'dress_floral_puff.glb';
-  let silhouette = 'floral-puff';
+  let targetGlb = 'dress_slip.glb';
+  let silhouette = 'slip-dress';
 
   if (cat.includes('bottom') || cat.includes('jean') || cat.includes('trouser')) {
     targetGlb = 'trouser_jeans.glb';
