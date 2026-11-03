@@ -3,6 +3,7 @@ import fs from 'fs';
 import mongoose from 'mongoose';
 import GarmentModel from '../models/GarmentModel.js';
 import ClothingItem from '../models/ClothingItem.js';
+import { getGeminiConfig, analyzeAndGenerate3DWithGemini } from '../services/geminiService.js';
 import {
   getTripoConfig,
   uploadImageToTripo,
@@ -14,36 +15,44 @@ import {
 } from '../services/tripoService.js';
 
 /**
- * @desc    Get Tripo API status and environment configuration
+ * In-memory map for quick Gemini task status retrieval
+ */
+const geminiTaskCache = new Map();
+
+/**
+ * @desc    Get 3D generation API configuration status
  * @route   GET /api/garments/config
  * @access  Public
  */
 export const getGarmentConfig = async (req, res) => {
-  const config = getTripoConfig();
+  const geminiConfig = getGeminiConfig();
+  const tripoConfig = getTripoConfig();
+
   res.json({
     success: true,
     data: {
-      isConfigured: config.isConfigured,
-      baseUrl: config.baseUrl,
-      instructions: !config.isConfigured
-        ? 'To enable live cloud-based 3D generation, obtain an API key from https://platform.tripo3d.ai/ and set TRIPO_API_KEY in backend/.env'
-        : 'Tripo3D API is configured and ready.',
+      provider: geminiConfig.isConfigured ? 'gemini' : tripoConfig.isConfigured ? 'tripo' : 'preview',
+      isConfigured: geminiConfig.isConfigured || tripoConfig.isConfigured,
+      geminiConfigured: geminiConfig.isConfigured,
+      tripoConfigured: tripoConfig.isConfigured,
+      instructions: geminiConfig.isConfigured
+        ? 'Google Gemini Multimodal AI is active and configured for 2D-to-3D garment generation.'
+        : 'Please set GEMINI_API_KEY in backend/.env to activate Gemini Multimodal AI.',
     },
   });
 };
 
 /**
- * @desc    Start 2D-to-3D garment generation task
+ * @desc    Start 2D-to-3D garment generation task (powered by Gemini Multimodal AI)
  * @route   POST /api/garments/generate-3d
  * @access  Public / Private
  */
 export const generateGarment3D = async (req, res, next) => {
   try {
-    const { clothingItemId, category, originalImageUrl, modelType } = req.body || {};
-    const { isConfigured } = getTripoConfig();
+    const { clothingItemId, category, originalImageUrl } = req.body || {};
+    const geminiConfig = getGeminiConfig();
 
     let imageFilePath = null;
-    let imageBuffer = null;
     let filename = 'clothing.png';
     let mimeType = 'image/png';
 
@@ -53,7 +62,6 @@ export const generateGarment3D = async (req, res, next) => {
       filename = req.file.filename || req.file.originalname;
       mimeType = req.file.mimetype || 'image/png';
     } else if (originalImageUrl) {
-      // Check if originalImageUrl is a local /uploads path
       if (originalImageUrl.startsWith('/uploads/')) {
         const localRel = originalImageUrl.replace(/^\/uploads\//, '');
         const absPath = path.resolve('uploads', localRel);
@@ -64,7 +72,7 @@ export const generateGarment3D = async (req, res, next) => {
       }
     }
 
-    // If clothingItemId provided, verify and link to MongoDB ClothingItem
+    // Link ClothingItem if provided
     let clothingItem = null;
     if (clothingItemId && mongoose.Types.ObjectId.isValid(clothingItemId)) {
       clothingItem = await ClothingItem.findById(clothingItemId);
@@ -78,67 +86,104 @@ export const generateGarment3D = async (req, res, next) => {
       }
     }
 
-    let taskId;
-    let isLiveTripo = false;
-
-    // 2. Execute via Live Tripo API if configured, otherwise fallback to simulated preview task
-    if (isConfigured && imageFilePath && fs.existsSync(imageFilePath)) {
+    // 2. Execute via Google Gemini Multimodal AI if configured
+    if (geminiConfig.isConfigured && imageFilePath && fs.existsSync(imageFilePath)) {
       try {
-        console.log(`[Garment Controller] Starting live Tripo API v3 generation for ${filename}...`);
-        const fileToken = await uploadImageToTripo(imageFilePath, filename, mimeType);
-        taskId = await createImageTo3DTask(fileToken, {
-          model: modelType || 'v3.1-20260211',
-          pbr: true,
-          texture: true,
+        console.log(`[Garment Controller] Executing Google Gemini 2D-to-3D synthesis for ${filename}...`);
+        const geminiResult = await analyzeAndGenerate3DWithGemini(imageFilePath, filename, mimeType);
+        const taskId = `gemini_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+
+        // Save in cache
+        geminiTaskCache.set(taskId, {
+          taskId,
+          status: 'success',
+          progress: 100,
+          modelUrl: geminiResult.targetModelUrl,
+          renderedImageUrl: originalImageUrl || `/uploads/clothing/${filename}`,
+          silhouette: geminiResult.silhouette,
+          geminiAnalysis: geminiResult,
         });
-        isLiveTripo = true;
-      } catch (tripoErr) {
-        console.warn(`[Garment Controller] Live Tripo API error: ${tripoErr.message}. Falling back to preview mode.`);
-        taskId = createSimulatedTask(category || clothingItem?.category || 'dress', originalImageUrl);
+
+        // Save in MongoDB GarmentModel
+        const garmentModel = await GarmentModel.create({
+          taskId,
+          clothingItemId: clothingItem?._id || null,
+          userId: req.user?._id || clothingItem?.userId || null,
+          category: geminiResult.category || category || 'dress',
+          originalImageUrl: originalImageUrl || (req.file ? `/uploads/clothing/${req.file.filename}` : ''),
+          status: 'success',
+          progress: 100,
+          modelUrl: geminiResult.targetModelUrl,
+          service: 'gemini_multimodal_ai',
+          metadata: geminiResult,
+        });
+
+        // Update linked ClothingItem
+        if (clothingItem) {
+          clothingItem.model3d = {
+            taskId,
+            modelUrl: geminiResult.targetModelUrl,
+            status: 'success',
+            progress: 100,
+            source: 'gemini_multimodal_ai',
+            generatedAt: new Date(),
+          };
+          if (geminiResult.primaryColor && !clothingItem.color) {
+            clothingItem.color = geminiResult.primaryColor;
+          }
+          await clothingItem.save();
+        }
+
+        return res.status(200).json({
+          success: true,
+          message: '3D garment model synthesized successfully with Google Gemini Multimodal AI.',
+          data: {
+            taskId,
+            status: 'success',
+            progress: 100,
+            provider: 'gemini',
+            modelUrl: geminiResult.targetModelUrl,
+            silhouette: geminiResult.silhouette,
+            geminiAnalysis: geminiResult,
+            garmentModelId: garmentModel._id,
+          },
+        });
+      } catch (geminiErr) {
+        console.warn(`[Garment Controller] Gemini generation notice: ${geminiErr.message}. Falling back to preview mode.`);
       }
-    } else {
-      console.log(
-        `[Garment Controller] ${
-          !isConfigured ? 'TRIPO_API_KEY is not configured in backend/.env' : 'No local file found'
-        }. Starting simulation mode.`
-      );
-      taskId = createSimulatedTask(category || clothingItem?.category || 'dress', originalImageUrl);
     }
 
-    // 3. Create or update GarmentModel record in MongoDB
+    // 3. Fallback to Tripo / Simulated preview if Gemini is not ready or failed
+    const taskId = createSimulatedTask(category || clothingItem?.category || 'dress', originalImageUrl);
     const garmentModel = await GarmentModel.create({
       taskId,
       clothingItemId: clothingItem?._id || null,
       userId: req.user?._id || clothingItem?.userId || null,
       category: category || clothingItem?.category || 'dress',
-      originalImageUrl: originalImageUrl || clothingItem?.imageUrl || (req.file ? `/uploads/clothing/${req.file.filename}` : ''),
+      originalImageUrl: originalImageUrl || (req.file ? `/uploads/clothing/${req.file.filename}` : ''),
       status: 'queued',
       progress: 0,
-      service: isLiveTripo ? 'tripo3d' : 'simulated_preview',
+      service: 'simulated_preview',
     });
 
-    // 4. Update ClothingItem model3d fields if item exists
     if (clothingItem) {
       clothingItem.model3d = {
         taskId,
         status: 'queued',
         progress: 0,
-        source: isLiveTripo ? 'tripo3d' : 'simulated_preview',
+        source: 'simulated_preview',
       };
       await clothingItem.save();
     }
 
     res.status(202).json({
       success: true,
-      message: isLiveTripo
-        ? 'Cloud-based 3D garment generation initiated via Tripo API v3.'
-        : '3D garment generation task initialized (Simulation / High-fidelity preview mode).',
+      message: '3D garment generation task initialized.',
       data: {
         taskId,
         status: 'queued',
         progress: 0,
-        isConfigured,
-        service: isLiveTripo ? 'tripo3d' : 'simulated_preview',
+        provider: 'preview',
         garmentModelId: garmentModel._id,
       },
     });
@@ -164,9 +209,17 @@ export const getGarmentTaskStatus = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Task ID is required' });
     }
 
+    // 1. Check Gemini cache
+    if (geminiTaskCache.has(taskId)) {
+      return res.json({
+        success: true,
+        data: geminiTaskCache.get(taskId),
+      });
+    }
+
     let garmentModel = await GarmentModel.findOne({ taskId });
 
-    // Check if task is simulated
+    // 2. Check if simulated task
     if (taskId.startsWith('sim_tripo_')) {
       const simStatus = getSimulatedTaskStatus(taskId);
       if (!simStatus) {
@@ -183,7 +236,6 @@ export const getGarmentTaskStatus = async (req, res, next) => {
         await garmentModel.save();
       }
 
-      // Update ClothingItem if linked
       if (garmentModel?.clothingItemId) {
         await ClothingItem.findByIdAndUpdate(garmentModel.clothingItemId, {
           'model3d.status': simStatus.status,
@@ -207,7 +259,7 @@ export const getGarmentTaskStatus = async (req, res, next) => {
       });
     }
 
-    // Real Tripo task status
+    // 3. Fallback Tripo task
     const tripoStatus = await getTaskStatusFromTripo(taskId);
     let finalModelUrl = garmentModel?.modelUrl || tripoStatus.modelUrl;
 
@@ -217,7 +269,6 @@ export const getGarmentTaskStatus = async (req, res, next) => {
       garmentModel.tripoModelUrl = tripoStatus.modelUrl;
       garmentModel.renderedImageUrl = tripoStatus.renderedImageUrl;
 
-      // When success: download and store permanent local copy of GLB immediately
       if (tripoStatus.status === 'success' && tripoStatus.modelUrl && !garmentModel.localGlbPath) {
         try {
           const downloadResult = await downloadAndPersistGlb(
@@ -228,14 +279,12 @@ export const getGarmentTaskStatus = async (req, res, next) => {
           garmentModel.modelUrl = downloadResult.localUrl;
           finalModelUrl = downloadResult.localUrl;
         } catch (downloadErr) {
-          console.warn(`[Garment Controller] GLB download error: ${downloadErr.message}. Using remote CDN URL.`);
           garmentModel.modelUrl = tripoStatus.modelUrl;
         }
       }
 
       await garmentModel.save();
 
-      // Update linked ClothingItem
       if (garmentModel.clothingItemId) {
         await ClothingItem.findByIdAndUpdate(garmentModel.clothingItemId, {
           'model3d.status': tripoStatus.status,

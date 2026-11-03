@@ -1,13 +1,13 @@
 /**
  * tripoGarmentService.js
- * Frontend client for Cloud-Based 2D-to-3D Garment Generation (Tripo API v3)
- * via WardrobeWise backend API.
+ * Frontend client for Cloud-Based 2D-to-3D Garment Generation
+ * Powered by Google Gemini Multimodal AI & Cloud 3D Engine.
  */
 
 const API_BASE_URL = 'http://localhost:5000/api';
 
 /**
- * Checks Tripo3D configuration status on the backend
+ * Checks AI 3D garment generation configuration status on the backend
  */
 export async function getTripoApiConfig() {
   try {
@@ -22,7 +22,7 @@ export async function getTripoApiConfig() {
 }
 
 /**
- * Initiates 2D-to-3D garment generation on the backend
+ * Initiates 2D-to-3D garment generation on the backend via Gemini Multimodal AI
  * @param {File|Blob|string} imageSource - File object or image URL
  * @param {object} metadata - { category, name, clothingItemId, color }
  */
@@ -73,14 +73,36 @@ export async function start3DGarmentGeneration(imageSource, metadata = {}) {
  * @param {string} taskId - The task ID to poll
  * @param {function} onProgress - Callback receiving { progress, status }
  * @param {number} maxAttempts - Maximum polling attempts (default: 60 = 2 minutes)
- * @param {number} intervalMs - Polling interval in milliseconds (default: 2000)
+ * @param {number} intervalMs - Polling interval in milliseconds (default: 1500)
+ * @param {object} initialData - Optional pre-resolved task data from start3DGarmentGeneration
  */
 export async function pollGarmentGenerationTask(
   taskId,
   onProgress = null,
   maxAttempts = 60,
-  intervalMs = 2000
+  intervalMs = 1500,
+  initialData = null
 ) {
+  // Fast path: If Gemini already completed in the initial request
+  if (initialData && initialData.status === 'success') {
+    if (typeof onProgress === 'function') {
+      onProgress({
+        progress: 100,
+        status: 'success',
+        modelUrl: initialData.modelUrl,
+      });
+    }
+    return {
+      success: true,
+      taskId: initialData.taskId,
+      modelUrl: initialData.modelUrl,
+      renderedImageUrl: initialData.renderedImageUrl,
+      silhouette: initialData.silhouette || 'custom',
+      geminiAnalysis: initialData.geminiAnalysis,
+      isSimulated: false,
+    };
+  }
+
   let attempts = 0;
 
   while (attempts < maxAttempts) {
@@ -112,6 +134,7 @@ export async function pollGarmentGenerationTask(
           modelUrl: task.modelUrl,
           renderedImageUrl: task.renderedImageUrl,
           silhouette: task.silhouette || 'custom',
+          geminiAnalysis: task.geminiAnalysis,
           isSimulated: task.isSimulated || false,
         };
       }

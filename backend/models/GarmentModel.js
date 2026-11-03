@@ -99,3 +99,4 @@ garmentModelSchema.index({ clothingItemId: 1, status: 1 });
 const GarmentModel = mongoose.model('GarmentModel', garmentModelSchema);
 
 export default GarmentModel;
+

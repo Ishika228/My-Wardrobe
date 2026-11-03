@@ -235,3 +235,4 @@ export async function loadAndRigGlbGarment(
   riggedMesh.bind(avatarSkeleton, bindMatrix);
   return riggedMesh;
 }
+

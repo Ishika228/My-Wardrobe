@@ -34,3 +34,4 @@ router.get('/tasks/:taskId', optionalProtect, getGarmentTaskStatus);
 router.get('/item/:clothingItemId', optionalProtect, getGarmentByClothingItem);
 
 export default router;
+

@@ -593,8 +593,8 @@ export default function App() {
       console.info('Client fallback for cloth AI vision:', err.message);
     }
 
-    // 2. Cloud-Based 2D-to-3D Garment Generation (Tripo3D API v3)
-    setUploadStatus('Initiating Cloud 3D Generation (Tripo API v3)…');
+    // 2. Cloud-Based 2D-to-3D Garment Generation (Google Gemini Multimodal AI)
+    setUploadStatus('Analyzing & Generating 3D Garment with Google Gemini AI…');
     let cloud3DResult = null;
     try {
       const initTask = await start3DGarmentGeneration(file, {
@@ -606,12 +606,15 @@ export default function App() {
         cloud3DResult = await pollGarmentGenerationTask(
           initTask.taskId,
           ({ progress }) => {
-            setUploadStatus(`Generating 3D Garment via Cloud AI (${progress}%)…`);
-          }
+            setUploadStatus(`Generating 3D Garment with Gemini AI (${progress}%)…`);
+          },
+          60,
+          1500,
+          initTask
         );
       }
     } catch (cloudErr) {
-      console.info('[Cloud 3D Generation Notice]:', cloudErr.message);
+      console.info('[Gemini 3D Generation Notice]:', cloudErr.message);
     }
 
     // 3. Local Texture & PBR Normal/Roughness Baking
