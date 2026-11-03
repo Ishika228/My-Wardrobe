@@ -5,15 +5,15 @@ import * as THREE from 'three';
 
 // Avatar Locomotion, Mirror Station & Camera Controller
 export default function AvatarController({
-  avatarPosition,
-  setAvatarPosition,
-  avatarRotation,
-  setAvatarRotation,
-  isWalking,
-  setIsWalking,
+  avatarPosition = [0, 0, 0],
+  setAvatarPosition = () => {},
+  avatarRotation = [0, 0, 0],
+  setAvatarRotation = () => {},
+  isWalking = false,
+  setIsWalking = () => {},
   dpadInput = { x: 0, y: 0 },
   onResetDpad = () => {},
-  cameraMode = 'follow', // 'follow', 'free', 'mirror'
+  cameraMode = 'follow', // 'follow', 'free'
   controlsRef,
   autoRotate = false
 }) {
@@ -34,6 +34,20 @@ export default function AvatarController({
   const currentRotY = useRef(avatarRotation[1]);
   const targetRotY = useRef(avatarRotation[1]);
 
+  // Sync internal position if external prop changes (e.g. Reset view)
+  useEffect(() => {
+    if (avatarPosition) {
+      currentPos.current.set(avatarPosition[0], avatarPosition[1], avatarPosition[2]);
+    }
+  }, [avatarPosition]);
+
+  useEffect(() => {
+    if (avatarRotation) {
+      currentRotY.current = avatarRotation[1];
+      targetRotY.current = avatarRotation[1];
+    }
+  }, [avatarRotation]);
+
   // Boundaries inside the luxury boutique room
   const BOUNDS = {
     minX: -4.3,
@@ -42,18 +56,24 @@ export default function AvatarController({
     maxZ: 4.2
   };
 
-  // Listen to keyboard events
+  // Listen to keyboard events (handles both code e.g. KeyW and lowercase key e.g. 'w')
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if (keysPressed.current[e.code] !== undefined) {
-        keysPressed.current[e.code] = true;
-      }
+      const code = e.code;
+      const key = (e.key || '').toLowerCase();
+      if (code === 'KeyW' || key === 'w' || code === 'ArrowUp') keysPressed.current.KeyW = true;
+      if (code === 'KeyS' || key === 's' || code === 'ArrowDown') keysPressed.current.KeyS = true;
+      if (code === 'KeyA' || key === 'a' || code === 'ArrowLeft') keysPressed.current.KeyA = true;
+      if (code === 'KeyD' || key === 'd' || code === 'ArrowRight') keysPressed.current.KeyD = true;
     };
 
     const handleKeyUp = (e) => {
-      if (keysPressed.current[e.code] !== undefined) {
-        keysPressed.current[e.code] = false;
-      }
+      const code = e.code;
+      const key = (e.key || '').toLowerCase();
+      if (code === 'KeyW' || key === 'w' || code === 'ArrowUp') keysPressed.current.KeyW = false;
+      if (code === 'KeyS' || key === 's' || code === 'ArrowDown') keysPressed.current.KeyS = false;
+      if (code === 'KeyA' || key === 'a' || code === 'ArrowLeft') keysPressed.current.KeyA = false;
+      if (code === 'KeyD' || key === 'd' || code === 'ArrowRight') keysPressed.current.KeyD = false;
     };
 
     window.addEventListener('keydown', handleKeyDown);
@@ -69,13 +89,15 @@ export default function AvatarController({
     // Determine movement direction vector
     let moveX = 0;
     let moveZ = 0;
+    let dirX = 0;
+    let dirZ = 0;
 
     // Check keyboard input
     const k = keysPressed.current;
-    if (k.KeyW || k.ArrowUp) moveZ -= 1;
-    if (k.KeyS || k.ArrowDown) moveZ += 1;
-    if (k.KeyA || k.ArrowLeft) moveX -= 1;
-    if (k.KeyD || k.ArrowRight) moveX += 1;
+    if (k.KeyW) moveZ -= 1;
+    if (k.KeyS) moveZ += 1;
+    if (k.KeyA) moveX -= 1;
+    if (k.KeyD) moveX += 1;
 
     // Add mobile D-pad input
     if (dpadInput.y !== 0) moveZ -= dpadInput.y;
@@ -88,10 +110,10 @@ export default function AvatarController({
 
       // Normalize movement direction
       const len = Math.sqrt(moveX * moveX + moveZ * moveZ);
-      const dirX = moveX / len;
-      const dirZ = moveZ / len;
+      dirX = moveX / len;
+      dirZ = moveZ / len;
 
-      const speed = 2.8 * delta;
+      const speed = 2.6 * delta;
 
       // Update position with room boundaries
       const newX = THREE.MathUtils.clamp(currentPos.current.x + dirX * speed, BOUNDS.minX, BOUNDS.maxX);
@@ -117,25 +139,17 @@ export default function AvatarController({
       if (isWalking) setIsWalking(false);
     }
 
-    // Camera modes: 'mirror', 'follow', 'free'
+    // Camera follow and target tracking
     if (controlsRef?.current) {
       const controls = controlsRef.current;
+      const targetLook = new THREE.Vector3(currentPos.current.x, 1.45, currentPos.current.z);
+      controls.target.lerp(targetLook, 0.08);
 
-      if (cameraMode === 'mirror') {
-        // Position camera for full-length mirror outfit inspection
-        const targetLook = new THREE.Vector3(currentPos.current.x, 1.75, currentPos.current.z);
-        controls.target.lerp(targetLook, 0.08);
-      } else if (cameraMode === 'follow') {
-        // Smoothly interpolate orbit controls target to avatar upper body / face level
-        const targetLook = new THREE.Vector3(currentPos.current.x, 1.75, currentPos.current.z);
-        controls.target.lerp(targetLook, 0.08);
-
-        if (moving) {
-          const camDeltaX = dirX ? dirX * 2.8 * delta * 0.7 : 0;
-          const camDeltaZ = dirZ ? dirZ * 2.8 * delta * 0.7 : 0;
-          camera.position.x += camDeltaX;
-          camera.position.z += camDeltaZ;
-        }
+      if (cameraMode === 'follow' && moving) {
+        const camDeltaX = dirX * 2.6 * delta * 0.7;
+        const camDeltaZ = dirZ * 2.6 * delta * 0.7;
+        camera.position.x += camDeltaX;
+        camera.position.z += camDeltaZ;
       }
     }
   });
@@ -147,7 +161,7 @@ export default function AvatarController({
       dampingFactor={0.06}
       maxPolarAngle={Math.PI / 2 + 0.02}
       minPolarAngle={Math.PI / 8}
-      minDistance={1.6}
+      minDistance={1.4}
       maxDistance={10.0}
       autoRotate={autoRotate}
       autoRotateSpeed={0.8}

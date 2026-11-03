@@ -2,6 +2,7 @@ import React, { useRef, useEffect, useState, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { useGLTF, useAnimations } from '@react-three/drei';
 import * as THREE from 'three';
+import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { createGarmentPBRMaterial } from '../data/garmentTextures.js';
 
 /**
@@ -29,21 +30,42 @@ export default function Avatar3D({
   const avatarGltf = useGLTF('/models/female_avatar.glb');
   const animsGltf = useGLTF('/models/animations.glb');
 
-  // Retarget Mixamo animation tracks to match the avatar bones (removes 'mixamorig:' prefix)
+  // Retarget Mixamo animation tracks to match the avatar bones
+  // 1. Clean 'mixamorig:' bone prefix
+  // 2. Scale Hips translation from centimeters to meters (0.01x) so avatar doesn't fly into sky
+  // 3. Remove non-root bone position tracks so joints remain anatomically attached
   const retargetedAnimations = useMemo(() => {
     if (!animsGltf?.animations || animsGltf.animations.length === 0) return [];
     return animsGltf.animations.map((clip) => {
-      const cloned = clip.clone();
-      cloned.tracks.forEach((track) => {
-        // Replace bone track names like "mixamorig:Hips.position" -> "Hips.position"
-        track.name = track.name.replace(/^mixamorig:?/, '');
+      const filteredTracks = [];
+      clip.tracks.forEach((track) => {
+        const cleanName = track.name.replace(/mixamorig:?/g, '');
+        const isPosition = track.name.endsWith('.position');
+        const isHips = cleanName.startsWith('Hips.');
+
+        if (isPosition) {
+          if (isHips) {
+            const newTrack = track.clone();
+            newTrack.name = 'Hips.position';
+            for (let i = 0; i < newTrack.values.length; i++) {
+              newTrack.values[i] *= 0.01;
+            }
+            filteredTracks.push(newTrack);
+          }
+          // Non-root bone position tracks discarded to keep anatomical bone lengths intact
+        } else {
+          // Keep all bone rotations (.quaternion) and scales
+          const newTrack = track.clone();
+          newTrack.name = cleanName;
+          filteredTracks.push(newTrack);
+        }
       });
-      return cloned;
+      return new THREE.AnimationClip(clip.name, clip.duration, filteredTracks);
     });
   }, [animsGltf]);
 
   // Set up animations on the root group
-  const { actions, mixer } = useAnimations(retargetedAnimations, groupRef);
+  const { actions } = useAnimations(retargetedAnimations, groupRef);
 
   // Mesh references for modular styling and blendshapes
   const meshesRef = useRef({
@@ -62,7 +84,7 @@ export default function Avatar3D({
   const avatarScene = useMemo(() => {
     if (!avatarGltf?.scene) return null;
 
-    const clone = avatarGltf.scene.clone(true);
+    const clone = SkeletonUtils.clone(avatarGltf.scene);
     const discovered = {
       head: null,
       body: null,
@@ -83,6 +105,7 @@ export default function Avatar3D({
       if (child.isMesh || child.isSkinnedMesh) {
         child.castShadow = true;
         child.receiveShadow = true;
+        child.frustumCulled = false; // Never cull skinned mesh when animating
 
         const name = child.name.toLowerCase();
 
@@ -103,8 +126,7 @@ export default function Avatar3D({
           discovered.eyes.push(child);
         } else if (name.includes('glass')) {
           discovered.glasses = child;
-          // Hide glasses by default for clean natural face
-          child.visible = false;
+          child.visible = false; // Hide glasses by default for clean natural face
         }
 
         // Configure realistic PBR skin material
@@ -140,7 +162,7 @@ export default function Avatar3D({
     if (!actions) return;
 
     const idleAction = actions['idle'];
-    const walkAction = actions['walk'];
+    const walkAction = actions['walk'] || actions['run'];
 
     if (isWalking) {
       if (idleAction) idleAction.fadeOut(0.2);
@@ -152,10 +174,17 @@ export default function Avatar3D({
       if (walkAction) walkAction.fadeOut(0.25);
       if (idleAction) {
         idleAction.reset().fadeIn(0.25).play();
-        idleAction.timeScale = 0.9;
+        idleAction.timeScale = 0.95;
       }
     }
   }, [isWalking, actions]);
+
+  // Ensure idle animation starts immediately upon loading
+  useEffect(() => {
+    if (actions && actions['idle'] && !isWalking) {
+      actions['idle'].reset().fadeIn(0.3).play();
+    }
+  }, [actions]);
 
   // Natural Procedural Eye Blinking & Micro-Expressions
   const blinkTimerRef = useRef(0);
@@ -271,8 +300,8 @@ export default function Avatar3D({
         if (bone) bone.scale.set(1, 1, 1);
       });
 
-      // Default warm radiant human skin tone
-      const defaultSkin = new THREE.Color('#fbe2d3');
+      // Default radiant skin
+      const defaultSkin = new THREE.Color('#ffffff');
       if (head?.material) {
         head.material.color = defaultSkin;
         head.material.needsUpdate = true;
@@ -382,7 +411,7 @@ export default function Avatar3D({
         <primitive
           ref={avatarSceneRef}
           object={avatarScene}
-          scale={[1.0, 1.0, 1.0]}
+          scale={[1.15, 1.15, 1.15]}
           position={[0, 0, 0]}
         />
       )}
