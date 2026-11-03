@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+// Note: no import from garmentTextures to avoid circular dependency
 
 /**
  * 2D Image to 3D Garment Conversion Engine
