@@ -245,6 +245,33 @@ export const PRODUCTS = [
 
   // --- DRESSES ---
   {
+    id: 'dress-floral-puff',
+    name: 'Vintage Floral Puff-Sleeve Ruffled Dress',
+    category: 'dresses',
+    price: 245,
+    discountPrice: 198,
+    rating: 5.0,
+    reviewsCount: 194,
+    description: 'A romantic floral midi dress featuring a square neckline, dramatic 3D puff sleeves with ruffled cuffs, a cinched waistband with a tied front ribbon bow, and a voluminous 3-tier ruffled flounce skirt.',
+    details: ['100% Breathable Cotton Poplin', 'Square neckline & elasticated puff sleeves', 'Tied sash bow at waist', '3-tiered flounce skirt', 'Machine wash gentle'],
+    sizes: ['XS', 'S', 'M', 'L'],
+    colors: [
+      { name: 'Rose Petal Pink', hex: '#e5779c' },
+      { name: 'Blush Floral', hex: '#f472b6' }
+    ],
+    primaryColor: '#e5779c',
+    brand: 'Maison Florale',
+    inStock: true,
+    stockCount: 15,
+    featured: true,
+    tags: ['floral', 'puff-sleeve', 'ruffle', 'dress', 'summer', 'trending'],
+    garmentType: 'dress',
+    silhouette: 'floral-puff',
+    position3D: [2.6, 2.3, 0.4],
+    complementaryIds: ['shoe-2', 'acc-1'],
+    image: '/models/garments/pink_floral_texture.png'
+  },
+  {
     id: 'dress-1',
     name: 'Satin Bias-Cut Slip Midi Dress',
     category: 'dresses',

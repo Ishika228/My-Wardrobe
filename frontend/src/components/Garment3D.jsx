@@ -65,6 +65,44 @@ function ClothMesh({ silhouette, color, roughness = 0.55, metalness = 0.05 }) {
       rightSleeve.position.set(0.26, 0.16, 0);
       rightSleeve.rotation.z = -0.25;
       group.add(rightSleeve);
+    } else if (silhouette === 'floral-puff') {
+      // Romantic floral dress with square neck, 3D puff sleeves, front waist bow & 3 ruffled tiers
+      const bodice = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.165, 0.28, 24), primaryMat);
+      bodice.position.set(0, 0.28, 0);
+      bodice.scale.set(1, 1, 0.75);
+      group.add(bodice);
+
+      // Left puff sleeve
+      const leftPuff = new THREE.Mesh(new THREE.SphereGeometry(0.08, 16, 16), primaryMat);
+      leftPuff.position.set(-0.22, 0.34, 0);
+      leftPuff.scale.set(1.2, 1.1, 1);
+      group.add(leftPuff);
+
+      // Right puff sleeve
+      const rightPuff = new THREE.Mesh(new THREE.SphereGeometry(0.08, 16, 16), primaryMat);
+      rightPuff.position.set(0.22, 0.34, 0);
+      rightPuff.scale.set(1.2, 1.1, 1);
+      group.add(rightPuff);
+
+      // Front waist tied bow
+      const bowKnot = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.035, 0.02), goldMat);
+      bowKnot.position.set(0, 0.14, 0.11);
+      group.add(bowKnot);
+
+      // Tier 1 flounce
+      const tier1 = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.23, 0.18, 24, 1, true), primaryMat);
+      tier1.position.set(0, 0.05, 0);
+      group.add(tier1);
+
+      // Tier 2 flounce
+      const tier2 = new THREE.Mesh(new THREE.CylinderGeometry(0.23, 0.30, 0.20, 24, 1, true), primaryMat);
+      tier2.position.set(0, -0.13, 0);
+      group.add(tier2);
+
+      // Tier 3 flounce
+      const tier3 = new THREE.Mesh(new THREE.CylinderGeometry(0.30, 0.38, 0.22, 24, 1, true), primaryMat);
+      tier3.position.set(0, -0.32, 0);
+      group.add(tier3);
     } else if (silhouette === 'slip-dress' || silhouette === 'mini-dress') {
       // Liquid satin slip dress with flaring hemline
       const bodice = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.19, 0.34, 32), primaryMat);

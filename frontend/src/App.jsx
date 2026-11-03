@@ -548,7 +548,8 @@ export default function App() {
     let detectedCategory = activeCategory !== 'all' ? activeCategory : 'tops';
     let detectedName = file.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ');
     detectedName = detectedName.replace(/\b\w/g, (c) => c.toUpperCase());
-    let detectedColor = '#d946ef';
+    let detectedColor = '#e5779c';
+    let detectedPattern = 'Plain';
     let detectedTags = ['custom', 'uploaded', 'wardrobe'];
 
     // 1. Vision AI classification
@@ -578,6 +579,11 @@ export default function App() {
           detectedColor = aiResult.color_dominant.hex;
         }
 
+        if (aiResult.pattern) {
+          detectedPattern = aiResult.pattern;
+          detectedTags.push(aiResult.pattern.toLowerCase());
+        }
+
         if (aiResult.category) {
           detectedName = `${aiResult.colour?.dominant || ''} ${aiResult.category}`.trim();
         }
@@ -594,7 +600,8 @@ export default function App() {
       const cloth3D = await convert2DClothTo3D(file, {
         category: detectedCategory,
         color: detectedColor,
-        name: detectedName
+        name: detectedName,
+        pattern: detectedPattern
       });
       if (cloth3D?.success && cloth3D.pbrMaterial) {
         convertedPbr = cloth3D.pbrMaterial;
@@ -634,7 +641,13 @@ export default function App() {
       featured: true,
       tags: detectedTags,
       garmentType: detectedCategory === 'dresses' ? 'dress' : detectedCategory === 'trousers' ? 'bottom' : detectedCategory === 'shoes' ? 'shoes' : 'top',
-      silhouette: detectedCategory === 'dresses' ? 'slip-dress' : 'custom',
+      silhouette: convertedCloth3D?.modelKey === 'floral_puff'
+        ? 'floral-puff'
+        : detectedCategory === 'dresses'
+        ? 'slip-dress'
+        : detectedCategory === 'trousers'
+        ? 'wide-jeans'
+        : 'custom',
       position3D: [0, 2.0, -1.8],
       complementaryIds: [],
       image: localImageUrl,

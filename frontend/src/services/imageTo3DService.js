@@ -1,20 +1,23 @@
 import * as THREE from 'three';
-// Note: no import from garmentTextures to avoid circular dependency
 
 /**
  * 2D Image to 3D Garment Conversion Engine
  * 
  * Based on the Claude Blender-Image-to-3D Skill Pipeline:
- * 1. Silhouette Extraction & Background Removal:
- *    Isolates the clothing contour from studio/photo backgrounds.
+ * 1. Adaptive Silhouette Extraction & Background Elimination:
+ *    Detects background color from image corners (supporting dark studio grey, white, or color backdrops)
+ *    and seamlessly fills outer UV boundaries with the garment's matching fabric color.
+ *    PREVENTS ALL BLACK CONES, BLACK RINGS, AND DISTORTIONS.
  * 2. Conformal UV Mapping:
- *    Projects and positions the garment across the 3D avatar torso/legs.
+ *    Projects garment front and back contours with accurate aspect preservation.
  * 3. Tangent-Space Normal Map Baking:
- *    Synthesizes physical 3D fabric folds, seams, and textile relief via gradient filtering.
+ *    Synthesizes physical 3D fabric folds, seams, and textile relief via Sobel filter.
  * 4. PBR Roughness & Ambient Occlusion Synthesis:
- *    Produces micro-roughness and contact fold shadows.
- * 5. Material Generation:
- *    Compiles complete THREE.MeshPhysicalMaterial ready for 3D avatar try-on.
+ *    Produces realistic micro-roughness, specular highlights, and fabric sheen.
+ * 5. Model Selection:
+ *    Resolves exact 3D GLB model archetype (e.g. dress_floral_puff.glb for puff-sleeve ruffles,
+ *    dress_saree.glb for ethnic sarees, dress_slip.glb for slip dresses,
+ *    top_casual.glb for shirts, trouser_jeans.glb for denim).
  */
 
 // Helper to load any image source into an HTMLImageElement
@@ -27,7 +30,7 @@ export function loadImageElement(source) {
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.onload = () => resolve(img);
-    img.onerror = (e) => reject(new Error('Failed to load clothing image for 3D conversion'));
+    img.onerror = () => reject(new Error('Failed to load clothing image for 3D conversion'));
     if (typeof source === 'string') {
       img.src = source;
     } else if (source instanceof File || source instanceof Blob) {
@@ -38,59 +41,88 @@ export function loadImageElement(source) {
   });
 }
 
-// 1. Silhouette Extraction & Alpha Masking
-export function processGarmentSilhouette(img, targetWidth = 1024, targetHeight = 1024) {
+// 1. Adaptive Silhouette Extraction & Color Preservation
+export function processGarmentSilhouette(img, targetWidth = 1024, targetHeight = 1024, fallbackHex = '#e5779c') {
   const canvas = document.createElement('canvas');
   canvas.width = targetWidth;
   canvas.height = targetHeight;
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
-  // Calculate aspect-preserving fit centered in upper-middle UV region
+  // Calculate aspect-preserving fit centered in UV space
   const imgAspect = img.width / img.height;
-  let drawW = targetWidth * 0.88;
+  let drawW = targetWidth * 0.90;
   let drawH = drawW / imgAspect;
 
-  if (drawH > targetHeight * 0.9) {
-    drawH = targetHeight * 0.9;
+  if (drawH > targetHeight * 0.92) {
+    drawH = targetHeight * 0.92;
     drawW = drawH * imgAspect;
   }
 
   const drawX = (targetWidth - drawW) / 2;
   const drawY = (targetHeight - drawH) / 2;
 
+  // Pre-fill canvas with the garment's primary fabric color so edges never render as black!
+  ctx.fillStyle = fallbackHex;
+  ctx.fillRect(0, 0, targetWidth, targetHeight);
+
+  // Draw original clothing image
   ctx.drawImage(img, drawX, drawY, drawW, drawH);
 
   const imgData = ctx.getImageData(0, 0, targetWidth, targetHeight);
   const data = imgData.data;
 
-  // Sample corner background color to detect studio white/grey backdrops
-  const cornerR = (data[0] + data[4 * (targetWidth - 1)]) / 2;
-  const cornerG = (data[1] + data[4 * (targetWidth - 1) + 1]) / 2;
-  const cornerB = (data[2] + data[4 * (targetWidth - 1) + 2]) / 2;
-  const isLightBg = cornerR > 215 && cornerG > 215 && cornerB > 215;
+  // Sample the 4 corners of the drawn image region to detect studio backdrop (whether dark grey, white, etc.)
+  const cX0 = Math.floor(Math.max(0, drawX + 3));
+  const cX1 = Math.floor(Math.min(targetWidth - 1, drawX + drawW - 4));
+  const cY0 = Math.floor(Math.max(0, drawY + 3));
+  const cY1 = Math.floor(Math.min(targetHeight - 1, drawY + drawH - 4));
 
-  // If studio backdrop detected, perform soft-edge alpha feathering on near-white background
-  if (isLightBg) {
-    for (let i = 0; i < data.length; i += 4) {
-      const r = data[i];
-      const g = data[i + 1];
-      const b = data[i + 2];
-      // Distance from detected corner backdrop
-      const diff = Math.sqrt((r - cornerR) ** 2 + (g - cornerG) ** 2 + (b - cornerB) ** 2);
-      if (diff < 28) {
-        data[i + 3] = 0; // Pure background
-      } else if (diff < 55) {
-        data[i + 3] = Math.floor(((diff - 28) / 27) * 255); // Anti-aliased feather
-      }
-    }
-    ctx.putImageData(imgData, 0, 0);
+  const p1 = (cY0 * targetWidth + cX0) * 4;
+  const p2 = (cY0 * targetWidth + cX1) * 4;
+  const p3 = (cY1 * targetWidth + cX0) * 4;
+  const p4 = (cY1 * targetWidth + cX1) * 4;
+
+  const bgR = (data[p1] + data[p2] + data[p3] + data[p4]) / 4;
+  const bgG = (data[p1 + 1] + data[p2 + 1] + data[p3 + 1] + data[p4 + 1]) / 4;
+  const bgB = (data[p1 + 2] + data[p2 + 2] + data[p3 + 2] + data[p4 + 2]) / 4;
+
+  // Parse fallback fabric color
+  let fbR = 229, fbG = 119, fbB = 156;
+  if (fallbackHex && fallbackHex.startsWith('#') && fallbackHex.length >= 7) {
+    fbR = parseInt(fallbackHex.substring(1, 3), 16) || 229;
+    fbG = parseInt(fallbackHex.substring(3, 5), 16) || 119;
+    fbB = parseInt(fallbackHex.substring(5, 7), 16) || 156;
   }
 
+  // Smoothly blend background pixels into matching fabric color
+  for (let i = 0; i < data.length; i += 4) {
+    const r = data[i];
+    const g = data[i + 1];
+    const b = data[i + 2];
+
+    const dist = Math.sqrt((r - bgR) ** 2 + (g - bgG) ** 2 + (b - bgB) ** 2);
+    if (dist < 24) {
+      // Background: replace with fabric tone
+      data[i]     = fbR;
+      data[i + 1] = fbG;
+      data[i + 2] = fbB;
+      data[i + 3] = 255;
+    } else if (dist < 48) {
+      // Anti-aliased feather
+      const t = (dist - 24) / 24;
+      data[i]     = Math.round(r * t + fbR * (1 - t));
+      data[i + 1] = Math.round(g * t + fbG * (1 - t));
+      data[i + 2] = Math.round(b * t + fbB * (1 - t));
+      data[i + 3] = 255;
+    }
+  }
+
+  ctx.putImageData(imgData, 0, 0);
   return { canvas, ctx, drawX, drawY, drawW, drawH };
 }
 
 // 2. Synthesize Tangent-Space Normal Map (OpenGL +Y standard)
-export function synthesizeNormalMap(sourceCanvas, strength = 2.2) {
+export function synthesizeNormalMap(sourceCanvas, strength = 2.0) {
   const w = sourceCanvas.width;
   const h = sourceCanvas.height;
 
@@ -127,7 +159,6 @@ export function synthesizeNormalMap(sourceCanvas, strength = 2.2) {
       const dX = (tr + 2 * r + br) - (tl + 2 * l + bl);
       const dY = (bl + 2 * b + br) - (tl + 2 * t + tr);
 
-      // Normal vector
       const nX = (-dX * strength) / 255;
       const nY = (-dY * strength) / 255;
       const nZ = 1.0;
@@ -136,8 +167,8 @@ export function synthesizeNormalMap(sourceCanvas, strength = 2.2) {
       const pIdx = idx * 4;
 
       outData[pIdx]     = Math.floor(((nX / len) * 0.5 + 0.5) * 255); // R
-      outData[pIdx + 1] = Math.floor(((nY / len) * 0.5 + 0.5) * 255); // G (OpenGL +Y)
-      outData[pIdx + 2] = Math.floor(((nZ / len) * 0.5 + 0.5) * 255); // B (Front)
+      outData[pIdx + 1] = Math.floor(((nY / len) * 0.5 + 0.5) * 255); // G
+      outData[pIdx + 2] = Math.floor(((nZ / len) * 0.5 + 0.5) * 255); // B
       outData[pIdx + 3] = 255;
     }
   }
@@ -147,7 +178,7 @@ export function synthesizeNormalMap(sourceCanvas, strength = 2.2) {
 }
 
 // 3. Synthesize Roughness Map
-export function synthesizeRoughnessMap(sourceCanvas, baseRoughness = 0.55) {
+export function synthesizeRoughnessMap(sourceCanvas, baseRoughness = 0.40) {
   const w = sourceCanvas.width;
   const h = sourceCanvas.height;
 
@@ -163,8 +194,7 @@ export function synthesizeRoughnessMap(sourceCanvas, baseRoughness = 0.55) {
 
   for (let i = 0; i < srcData.length; i += 4) {
     const luma = (0.299 * srcData[i] + 0.587 * srcData[i + 1] + 0.114 * srcData[i + 2]) / 255;
-    // Folds and dark areas slightly rougher, highlights smoother
-    const rVal = Math.floor(Math.min(255, Math.max(20, (baseRoughness + (1 - luma) * 0.25) * 255)));
+    const rVal = Math.floor(Math.min(255, Math.max(30, (baseRoughness + (1 - luma) * 0.20) * 255)));
     outData[i]     = rVal;
     outData[i + 1] = rVal;
     outData[i + 2] = rVal;
@@ -179,43 +209,63 @@ export function synthesizeRoughnessMap(sourceCanvas, baseRoughness = 0.55) {
 export async function convert2DClothTo3D(imageSource, metadata = {}) {
   try {
     const img = await loadImageElement(imageSource);
-    const { category = 'tops', color = '#ffffff', name = 'Custom Garment' } = metadata;
+    const {
+      category = 'tops',
+      color = '#e5779c',
+      name = 'Custom Garment',
+      pattern = 'Plain'
+    } = metadata;
 
-    // Step A: Extract silhouette and align onto 1024x1024 master canvas
-    const { canvas: baseColorCanvas } = processGarmentSilhouette(img, 1024, 1024);
+    const catLower = (category || '').toLowerCase();
+    const nameLower = (name || '').toLowerCase();
+    const patLower = (pattern || '').toLowerCase();
+
+    // Determine 3D Model Archetype
+    let modelKey = 'top_casual';
+    const isDress = catLower.includes('dress') || nameLower.includes('dress') || nameLower.includes('frock') || nameLower.includes('gown');
+    const isSaree = catLower.includes('ethnic') || nameLower.includes('saree') || nameLower.includes('banarasi') || nameLower.includes('anarkali');
+    const isTrouser = catLower.includes('trouser') || catLower.includes('pant') || catLower.includes('bottom') || nameLower.includes('jean') || nameLower.includes('denim');
+
+    if (isSaree) {
+      modelKey = 'saree';
+    } else if (isDress) {
+      // Check if it's the floral puff-sleeve tiered dress or a standard slip
+      const hasFloralOrPuff = patLower.includes('floral') || nameLower.includes('floral') || nameLower.includes('puff') || nameLower.includes('frock') || nameLower.includes('ruffle') || nameLower.includes('party') || nameLower.includes('pink');
+      modelKey = hasFloralOrPuff ? 'floral_puff' : 'slip';
+    } else if (isTrouser) {
+      modelKey = 'trouser_jeans';
+    } else {
+      modelKey = 'top_casual';
+    }
+
+    // Step A: Extract silhouette and eliminate dark/white backdrops
+    const { canvas: baseColorCanvas } = processGarmentSilhouette(img, 1024, 1024, color);
 
     // Step B: Tangent-Space Normal Map Baking
     const normalCanvas = synthesizeNormalMap(baseColorCanvas, 2.0);
 
     // Determine fabric physics parameters based on garment classification
-    const catLower = category.toLowerCase();
-    const nameLower = name.toLowerCase();
-
-    let fabricType = 'ribbed';
-    let roughness = 0.55;
+    let fabricType = 'cotton';
+    let roughness = 0.38;
     let metalness = 0.05;
-    let clearcoat = 0.0;
-    let clearcoatRoughness = 0.1;
+    let clearcoat = 0.25;
+    let clearcoatRoughness = 0.08;
 
-    if (catLower.includes('jean') || catLower.includes('trouser') || nameLower.includes('denim')) {
+    if (isTrouser) {
       fabricType = 'denim';
-      roughness = 0.72;
+      roughness = 0.75;
       metalness = 0.02;
-    } else if (catLower.includes('dress') || nameLower.includes('silk') || nameLower.includes('satin')) {
-      fabricType = 'satin';
-      roughness = 0.28;
-      metalness = 0.22;
-      clearcoat = 0.45;
-      clearcoatRoughness = 0.08;
-    } else if (nameLower.includes('leather') || nameLower.includes('jacket') || catLower.includes('outerwear')) {
-      fabricType = 'leather';
-      roughness = 0.38;
-      metalness = 0.18;
-      clearcoat = 0.4;
-    } else if (catLower.includes('shoe') || catLower.includes('footwear')) {
-      fabricType = 'sneaker';
-      roughness = 0.52;
-      metalness = 0.08;
+      clearcoat = 0.0;
+    } else if (isSaree) {
+      fabricType = 'banarasi_silk';
+      roughness = 0.26;
+      metalness = 0.35;
+      clearcoat = 0.65;
+    } else if (isDress) {
+      fabricType = 'floral_cotton_poplin';
+      roughness = 0.35;
+      metalness = 0.05;
+      clearcoat = 0.25;
     }
 
     // Step C: Roughness Map Baking
@@ -249,13 +299,14 @@ export async function convert2DClothTo3D(imageSource, metadata = {}) {
       metalness,
       clearcoat,
       clearcoatRoughness,
-      envMapIntensity: 1.15,
+      envMapIntensity: 1.25,
       side: THREE.DoubleSide
     });
 
     return {
       success: true,
       pbrMaterial,
+      modelKey,
       textures: {
         baseColor: baseColorTex,
         normal: normalTex,

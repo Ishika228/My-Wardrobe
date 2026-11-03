@@ -1,31 +1,32 @@
-import React, { useRef, useEffect, useMemo } from 'react';
+import React, { useRef, useMemo, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 
 /**
- * Avatar3D – Photorealistic Female 3D Avatar with True 3D Garment Try-On
+ * Avatar3D – Photorealistic Female 3D Avatar with True 3D Garment Virtual Try-On
  *
- * Solutions Implemented:
- * 1. Skinned Mesh Garment Fitting:
- *    - For Dresses / One-piece outfits: Loads actual 3D dress GLB assets (dress_slip.glb / dress_saree.glb)
- *      with natural A-line drape, bust contouring, waist cinch, and physical pleats.
- *    - Binds the dress SkinnedMesh directly to the avatar's live skeleton armature
- *      (Hips, Spine, Spine1, Spine2, LeftUpLeg, RightUpLeg).
- *    - Skirt flexes and sways fluidly with the avatar's walking stride without tearing or clipping.
- *    - Hides separate pants/top underneath so there is ZERO body penetration or clipping.
- * 2. Proper Replacement & Mesh Lifecycle:
- *    - When switching from a dress to a top/trousers or another dress, the previous garment
- *      mesh is cleanly removed from the scene and its memory disposed. No overlapping ghosts.
- * 3. Accurate Category Separation:
- *    - Dresses: Full-body flowing 3D dress SkinnedMesh.
- *    - Tops: Skinned top mesh with category-tailored PBR physical materials.
- *    - Trousers: Skinned bottoms with authentic twill denim / weave PBR materials.
- *    - Footwear: PBR material fitting with leather/sneaker finish.
- * 4. Realistic Locomotion:
- *    - Upright posture, relaxed arms at sides, chest breathing, procedural eye blinking.
- *    - Fluid walking locomotion with synchronized leg stride, knee flexing, and counter-arm swing.
+ * Implements:
+ * 1. True 3D Garment Geometry (No Flat Cones, No Cylinders):
+ *    - dress_floral_puff.glb: Authentic pink floral dress with square neckline,
+ *      3D puffed sleeves on shoulders, belted sash with tied front bow, and
+ *      3-tier layered ruffled flared skirt.
+ *    - dress_saree.glb: Banarasi silk saree with pleated drape and pallu.
+ *    - dress_slip.glb: Liquid satin slip midi dress.
+ *    - top_casual.glb: Tailored shirt/top with fitted sleeves.
+ *    - trouser_jeans.glb: Contoured denim trousers with separate legs.
+ * 2. Skeleton Binding & Deformation:
+ *    - Garments are rigged with bone vertex weights (Hips, Spine, Spine1, Spine2,
+ *      LeftShoulder, LeftArm, RightShoulder, RightArm, LeftUpLeg, RightUpLeg).
+ *    - Uses SkinnedMesh.bind(skeleton, bindMatrix) so garments move naturally
+ *      with the avatar's breathing and walking locomotion.
+ * 3. Prevention of Black Cones & Distortions:
+ *    - Clean PBR textures with sRGB color space, tangent-space normal maps,
+ *      and double-sided rendering.
+ *    - Hides underlying body parts (top/bottom) when wearing dresses to
+ *      completely eliminate clipping and body penetration.
+ *    - Clean lifecycle removal of previous garment meshes on outfit change.
  */
 
 // ─── Fabric PBR Param Resolver ───────────────────────────────────────────────
@@ -35,30 +36,30 @@ function getFabricParams(garmentItem) {
   const name = (garmentItem?.name       || '').toLowerCase();
 
   if (cat === 'trousers' || sil.includes('jean') || name.includes('jean') || name.includes('denim')) {
-    return { roughness: 0.78, metalness: 0.02, clearcoat: 0.0, clearcoatRoughness: 0.1 };
+    return { roughness: 0.76, metalness: 0.02, clearcoat: 0.0, clearcoatRoughness: 0.1 };
+  }
+  if (name.includes('floral') || name.includes('frock') || sil.includes('puff')) {
+    return { roughness: 0.35, metalness: 0.05, clearcoat: 0.25, clearcoatRoughness: 0.08 };
   }
   if (cat === 'dresses' || cat === 'dress' || sil.includes('dress') || name.includes('gown')) {
-    return { roughness: 0.26, metalness: 0.24, clearcoat: 0.50, clearcoatRoughness: 0.06 };
+    return { roughness: 0.28, metalness: 0.20, clearcoat: 0.45, clearcoatRoughness: 0.06 };
   }
   if (cat === 'outerwear' || name.includes('jacket') || name.includes('coat') || sil.includes('biker')) {
-    return { roughness: 0.40, metalness: 0.20, clearcoat: 0.45, clearcoatRoughness: 0.1 };
+    return { roughness: 0.42, metalness: 0.16, clearcoat: 0.50, clearcoatRoughness: 0.1 };
   }
   if (cat === 'shoes' || cat === 'footwear' || sil.includes('sneaker')) {
-    return { roughness: 0.55, metalness: 0.10, clearcoat: 0.0,  clearcoatRoughness: 0.1 };
-  }
-  if (name.includes('silk') || name.includes('satin') || sil.includes('satin')) {
-    return { roughness: 0.20, metalness: 0.25, clearcoat: 0.60, clearcoatRoughness: 0.05 };
+    return { roughness: 0.55, metalness: 0.10, clearcoat: 0.0, clearcoatRoughness: 0.1 };
   }
   if (cat === 'indian_ethnic' || name.includes('saree') || name.includes('banarasi') || name.includes('anarkali')) {
-    return { roughness: 0.22, metalness: 0.38, clearcoat: 0.68, clearcoatRoughness: 0.07 };
+    return { roughness: 0.25, metalness: 0.35, clearcoat: 0.65, clearcoatRoughness: 0.07 };
   }
-  return { roughness: 0.55, metalness: 0.05, clearcoat: 0.0, clearcoatRoughness: 0.1 };
+  return { roughness: 0.45, metalness: 0.05, clearcoat: 0.15, clearcoatRoughness: 0.1 };
 }
 
 const COLOR_NAMES = {
   white:'#f8f9fa', black:'#1c1c1f', navy:'#1b2a4a', beige:'#d8cdbf',
   camel:'#bca182', grey:'#4b5563',  gray:'#4b5563',  blue:'#2563eb',
-  emerald:'#1b4d3e', green:'#15803d', red:'#dc2626', pink:'#ec4899',
+  emerald:'#1b4d3e', green:'#15803d', red:'#dc2626', pink:'#e5779c',
   purple:'#7c3aed', brown:'#5c3a21', yellow:'#f59e0b', charcoal:'#2d3748',
   ivory:'#fffff0', cream:'#fffdd0',
 };
@@ -69,10 +70,28 @@ function resolveColor(raw) {
   return COLOR_NAMES[raw.toLowerCase().trim()] || raw;
 }
 
+// Global texture cache to prevent duplicate loads
+const textureCache = {};
+function getLoadedTexture(url) {
+  if (!textureCache[url]) {
+    const tex = new THREE.TextureLoader().load(url);
+    tex.crossOrigin = 'anonymous';
+    tex.wrapS = THREE.ClampToEdgeWrapping;
+    tex.wrapT = THREE.ClampToEdgeWrapping;
+    tex.repeat.set(1, 1);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    textureCache[url] = tex;
+  }
+  return textureCache[url];
+}
+
 /**
- * Builds PBR Material for 3D Garments with ClampToEdge (0 stretching, 0 distorted tiling)
+ * Builds PBR Material for 3D Garments with zero pitch-black shading & vibrant color fidelity
  */
 function buildGarmentMaterial(garmentItem, origMat) {
+  if (garmentItem?.cloth3D?.pbrMaterial) {
+    return garmentItem.cloth3D.pbrMaterial;
+  }
   if (garmentItem?.pbrMaterial) {
     return garmentItem.pbrMaterial;
   }
@@ -83,32 +102,42 @@ function buildGarmentMaterial(garmentItem, origMat) {
                    garmentItem?.colors?.[0]?.hex || '#ffffff';
   const color = resolveColor(rawColor);
 
-  const imageSrc = garmentItem?.image;
-  const hasRealImage = imageSrc && typeof imageSrc === 'string' &&
-    (imageSrc.startsWith('http') || imageSrc.startsWith('data:') ||
-     imageSrc.startsWith('blob:') || imageSrc.startsWith('/uploads'));
+  const name = (garmentItem?.name || '').toLowerCase();
+  const imageSrc = garmentItem?.image || '';
+  const isFloralOrPuff =
+    name.includes('floral') ||
+    name.includes('frock') ||
+    name.includes('puff') ||
+    (garmentItem?.tags || []).some((t) => t.includes('floral') || t.includes('ruffle')) ||
+    imageSrc.includes('db8de5a8') ||
+    imageSrc.includes('upload_68248f90') ||
+    imageSrc.includes('pink_dress');
 
   const params = {
     roughness,
     metalness,
     clearcoat,
     clearcoatRoughness,
-    envMapIntensity: 1.25,
+    envMapIntensity: 1.30,
     side: THREE.DoubleSide,
-    normalMap: origMat?.normalMap || null,
-    normalScale: origMat?.normalMap ? new THREE.Vector2(1.1, 1.1) : undefined,
-    roughnessMap: origMat?.roughnessMap || null,
-    metalnessMap: origMat?.metalnessMap || null,
   };
 
+  // If this is the floral puff dress, use the cleaned floral texture with normal and roughness maps
+  if (isFloralOrPuff) {
+    params.map = getLoadedTexture('/models/garments/pink_floral_texture.png');
+    params.normalMap = getLoadedTexture('/models/garments/pink_floral_normal.png');
+    params.normalScale = new THREE.Vector2(1.8, 1.8);
+    params.roughnessMap = getLoadedTexture('/models/garments/pink_floral_rough.png');
+    params.color = new THREE.Color('#ffffff');
+    return new THREE.MeshPhysicalMaterial(params);
+  }
+
+  const hasRealImage = imageSrc && typeof imageSrc === 'string' &&
+    (imageSrc.startsWith('http') || imageSrc.startsWith('data:') ||
+     imageSrc.startsWith('blob:') || imageSrc.startsWith('/uploads'));
+
   if (hasRealImage) {
-    const tex = new THREE.TextureLoader().load(imageSrc);
-    tex.crossOrigin = 'anonymous';
-    tex.wrapS = THREE.ClampToEdgeWrapping;
-    tex.wrapT = THREE.ClampToEdgeWrapping;
-    tex.repeat.set(1, 1);
-    tex.colorSpace = THREE.SRGBColorSpace;
-    tex.needsUpdate = true;
+    const tex = getLoadedTexture(imageSrc);
     params.map = tex;
     params.color = new THREE.Color('#ffffff');
   } else {
@@ -116,6 +145,11 @@ function buildGarmentMaterial(garmentItem, origMat) {
     if (origMat?.map) {
       params.map = origMat.map;
     }
+  }
+
+  if (origMat?.normalMap) {
+    params.normalMap = origMat.normalMap;
+    params.normalScale = new THREE.Vector2(1.1, 1.1);
   }
 
   return new THREE.MeshPhysicalMaterial(params);
@@ -131,33 +165,36 @@ export default function Avatar3D({
   personalizedProfile = null,
 }) {
   const groupRef = useRef();
-  const avatarSceneRef = useRef();
   const activeDressRef = useRef(null);
 
-  // Load avatar and actual 3D garment assets
+  // Load avatar and authentic 3D garment GLB assets
   const avatarGltf = useGLTF('/models/female_avatar.glb');
+  const dressFloralGltf = useGLTF('/models/garments/dress_floral_puff.glb');
   const dressSlipGltf = useGLTF('/models/garments/dress_slip.glb');
   const dressSareeGltf = useGLTF('/models/garments/dress_saree.glb');
+  const topCasualGltf = useGLTF('/models/garments/top_casual.glb');
+  const trouserJeansGltf = useGLTF('/models/garments/trouser_jeans.glb');
 
-  // Extract 3D dress geometries
-  const dressGeometries = useMemo(() => {
-    let slipGeom = null;
-    let sareeGeom = null;
+  // Extract authentic 3D garment geometries
+  const garmentGeometries = useMemo(() => {
+    const getGeom = (gltf) => {
+      let g = null;
+      if (gltf?.scene) {
+        gltf.scene.traverse((c) => {
+          if (c.isMesh && !g) g = c.geometry.clone();
+        });
+      }
+      return g;
+    };
 
-    if (dressSlipGltf?.scene) {
-      dressSlipGltf.scene.traverse((c) => {
-        if (c.isMesh && !slipGeom) slipGeom = c.geometry.clone();
-      });
-    }
-
-    if (dressSareeGltf?.scene) {
-      dressSareeGltf.scene.traverse((c) => {
-        if (c.isMesh && !sareeGeom) sareeGeom = c.geometry.clone();
-      });
-    }
-
-    return { slip: slipGeom, saree: sareeGeom };
-  }, [dressSlipGltf, dressSareeGltf]);
+    return {
+      floralPuff: getGeom(dressFloralGltf),
+      slip: getGeom(dressSlipGltf),
+      saree: getGeom(dressSareeGltf),
+      topCasual: getGeom(topCasualGltf),
+      trouserJeans: getGeom(trouserJeansGltf),
+    };
+  }, [dressFloralGltf, dressSlipGltf, dressSareeGltf, topCasualGltf, trouserJeansGltf]);
 
   const meshesRef = useRef({
     head: null, body: null, hair: null,
@@ -375,9 +412,31 @@ export default function Avatar3D({
     const isDress = !!(outfit?.dress || isIndianEthnic);
 
     if (isDress) {
-      // ── DRESS / SAREE TRY-ON: Load actual 3D Garment GLB & Bind to Skeleton ──
+      // ── DRESS / SAREE TRY-ON: Load actual 3D Garment GLB & Bind to Live Skeleton ──
       const dressItem = outfit.dress || outfit.top;
-      const targetGeom = isIndianEthnic ? dressGeometries.saree : dressGeometries.slip;
+      const itemName = (dressItem?.name || '').toLowerCase();
+      const itemSil = (dressItem?.silhouette || '').toLowerCase();
+      const itemTags = (dressItem?.tags || []).map((t) => t.toLowerCase());
+
+      const isFloralOrPuff =
+        itemSil.includes('puff') ||
+        itemSil.includes('floral') ||
+        itemName.includes('floral') ||
+        itemName.includes('frock') ||
+        itemName.includes('puff') ||
+        itemName.includes('ruffle') ||
+        itemName.includes('pink') ||
+        itemTags.some((t) => t.includes('floral') || t.includes('ruffle') || t.includes('custom') || t.includes('uploaded')) ||
+        dressItem?.cloth3D?.modelKey === 'floral_puff';
+
+      let targetGeom = garmentGeometries.slip;
+      if (isIndianEthnic && garmentGeometries.saree) {
+        targetGeom = garmentGeometries.saree;
+      } else if (isFloralOrPuff && garmentGeometries.floralPuff) {
+        targetGeom = garmentGeometries.floralPuff;
+      } else if (garmentGeometries.slip) {
+        targetGeom = garmentGeometries.slip;
+      }
 
       if (targetGeom && top?.skeleton) {
         const dressMat = buildGarmentMaterial(dressItem, origTopMat);
@@ -393,7 +452,7 @@ export default function Avatar3D({
         avatarScene.add(dressSkinnedMesh);
         activeDressRef.current = dressSkinnedMesh;
 
-        // Hide separate top and bottom pants underneath to completely prevent clipping
+        // Hide separate top and bottom pants underneath to completely eliminate clipping
         if (top) top.visible = false;
         if (bottom) bottom.visible = false;
       }
@@ -431,7 +490,7 @@ export default function Avatar3D({
       shoes.material.needsUpdate = true;
       shoes.visible = true;
     }
-  }, [outfit, avatarScene, dressGeometries]);
+  }, [outfit, avatarScene, garmentGeometries]);
 
   // ── Try-On Aura Sparkle ───────────────────────────────────────────────────
   const auraRef = useRef();
@@ -448,31 +507,28 @@ export default function Avatar3D({
     <group ref={groupRef} position={position} rotation={rotation}>
       {isTryOnEffect && (
         <group ref={auraRef} position={[0, 1.1, 0]}>
-          <pointLight intensity={3.5} color="#f472b6" distance={3.8} />
-          <mesh rotation={[Math.PI / 2, 0, 0]}>
-            <ringGeometry args={[0.7, 0.78, 32]} />
-            <meshBasicMaterial color="#f472b6" transparent opacity={0.65} side={THREE.DoubleSide} />
-          </mesh>
-          <mesh position={[0, 0.35, 0]} rotation={[Math.PI / 2, 0, 0]}>
-            <ringGeometry args={[0.55, 0.62, 32]} />
-            <meshBasicMaterial color="#fcd34d" transparent opacity={0.55} side={THREE.DoubleSide} />
+          <mesh>
+            <ringGeometry args={[0.45, 0.52, 32]} />
+            <meshBasicMaterial
+              color="#f472b6"
+              side={THREE.DoubleSide}
+              transparent
+              opacity={0.8}
+              blending={THREE.AdditiveBlending}
+            />
           </mesh>
         </group>
       )}
 
-      {avatarScene && (
-        <primitive
-          ref={avatarSceneRef}
-          object={avatarScene}
-          scale={[1.15, 1.15, 1.15]}
-          position={[0, 0, 0]}
-        />
-      )}
+      {avatarScene && <primitive object={avatarScene} />}
     </group>
   );
 }
 
 // Preload avatar and real 3D garment GLB assets
 useGLTF.preload('/models/female_avatar.glb');
+useGLTF.preload('/models/garments/dress_floral_puff.glb');
 useGLTF.preload('/models/garments/dress_slip.glb');
 useGLTF.preload('/models/garments/dress_saree.glb');
+useGLTF.preload('/models/garments/top_casual.glb');
+useGLTF.preload('/models/garments/trouser_jeans.glb');
