@@ -3,12 +3,17 @@ import { useFrame } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
+import { loadAndRigGlbGarment, fitAndRigStaticGarment } from '../services/garmentRiggingService.js';
 
 /**
  * Avatar3D – Photorealistic Female 3D Avatar with True 3D Garment Virtual Try-On
  *
  * Implements:
- * 1. True 3D Garment Geometry (No Flat Cones, No Cylinders):
+ * 1. Cloud-Based 2D-to-3D Garment Generation & Auto-Rigging:
+ *    - Loads dynamic GLB assets from Tripo3D API v3 / Cloud AI pipeline.
+ *    - Auto-rigs static geometry with ReadyPlayerMe bone weights (Hips, Spine, Shoulders, Arms, Legs).
+ *    - Binds to live avatar skeleton via SkinnedMesh.bind(skeleton, bindMatrix).
+ * 2. Authentic Pre-Rigged 3D Garment Geometry:
  *    - dress_floral_puff.glb: Authentic pink floral dress with square neckline,
  *      3D puffed sleeves on shoulders, belted sash with tied front bow, and
  *      3-tier layered ruffled flared skirt.
@@ -16,17 +21,12 @@ import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
  *    - dress_slip.glb: Liquid satin slip midi dress.
  *    - top_casual.glb: Tailored shirt/top with fitted sleeves.
  *    - trouser_jeans.glb: Contoured denim trousers with separate legs.
- * 2. Skeleton Binding & Deformation:
- *    - Garments are rigged with bone vertex weights (Hips, Spine, Spine1, Spine2,
- *      LeftShoulder, LeftArm, RightShoulder, RightArm, LeftUpLeg, RightUpLeg).
- *    - Uses SkinnedMesh.bind(skeleton, bindMatrix) so garments move naturally
- *      with the avatar's breathing and walking locomotion.
- * 3. Prevention of Black Cones & Distortions:
+ * 3. Prevention of Black Cones, Clipping & Distortions:
  *    - Clean PBR textures with sRGB color space, tangent-space normal maps,
  *      and double-sided rendering.
  *    - Hides underlying body parts (top/bottom) when wearing dresses to
  *      completely eliminate clipping and body penetration.
- *    - Clean lifecycle removal of previous garment meshes on outfit change.
+ *    - Clean lifecycle removal and memory disposal of previous garment meshes on outfit change.
  */
 
 // ─── Fabric PBR Param Resolver ───────────────────────────────────────────────
@@ -118,7 +118,6 @@ function buildGarmentMaterial(garmentItem, origMat) {
     metalness,
     clearcoat,
     clearcoatRoughness,
-    envMapIntensity: 1.30,
     side: THREE.DoubleSide,
   };
 
@@ -133,36 +132,30 @@ function buildGarmentMaterial(garmentItem, origMat) {
   }
 
   const hasRealImage = imageSrc && typeof imageSrc === 'string' &&
-    (imageSrc.startsWith('http') || imageSrc.startsWith('data:') ||
-     imageSrc.startsWith('blob:') || imageSrc.startsWith('/uploads'));
+                       (imageSrc.startsWith('http') || imageSrc.startsWith('blob:') || imageSrc.startsWith('/'));
 
   if (hasRealImage) {
-    const tex = getLoadedTexture(imageSrc);
-    params.map = tex;
-    params.color = new THREE.Color('#ffffff');
+    try {
+      const tex = getLoadedTexture(imageSrc);
+      params.map = tex;
+      params.color = new THREE.Color('#ffffff');
+    } catch {
+      params.color = new THREE.Color(color);
+    }
   } else {
     params.color = new THREE.Color(color);
-    if (origMat?.map) {
-      params.map = origMat.map;
-    }
-  }
-
-  if (origMat?.normalMap) {
-    params.normalMap = origMat.normalMap;
-    params.normalScale = new THREE.Vector2(1.1, 1.1);
   }
 
   return new THREE.MeshPhysicalMaterial(params);
 }
 
+// ─── Main Component ──────────────────────────────────────────────────────────
 export default function Avatar3D({
+  outfit = {},
+  isWalking = false,
+  isTryOnEffect = false,
   position = [0, 0, 0],
   rotation = [0, 0, 0],
-  isWalking = false,
-  outfit = null,
-  isTryOnEffect = false,
-  mode = 'demo',
-  personalizedProfile = null,
 }) {
   const groupRef = useRef();
   const activeDressRef = useRef(null);
@@ -177,43 +170,41 @@ export default function Avatar3D({
 
   // Extract authentic 3D garment geometries
   const garmentGeometries = useMemo(() => {
-    const getGeom = (gltf) => {
-      let g = null;
+    const extract = (gltf) => {
+      let found = null;
       if (gltf?.scene) {
-        gltf.scene.traverse((c) => {
-          if (c.isMesh && !g) g = c.geometry.clone();
+        gltf.scene.traverse((child) => {
+          if (!found && child.isMesh && child.geometry) {
+            found = child.geometry;
+          }
         });
       }
-      return g;
+      return found;
     };
 
     return {
-      floralPuff: getGeom(dressFloralGltf),
-      slip: getGeom(dressSlipGltf),
-      saree: getGeom(dressSareeGltf),
-      topCasual: getGeom(topCasualGltf),
-      trouserJeans: getGeom(trouserJeansGltf),
+      floralPuff: extract(dressFloralGltf),
+      slip: extract(dressSlipGltf),
+      saree: extract(dressSareeGltf),
+      top: extract(topCasualGltf),
+      jeans: extract(trouserJeansGltf),
     };
   }, [dressFloralGltf, dressSlipGltf, dressSareeGltf, topCasualGltf, trouserJeansGltf]);
 
   const meshesRef = useRef({
-    head: null, body: null, hair: null,
-    top: null, bottom: null, shoes: null,
-    eyes: [], glasses: null,
-    bones: {}, restQuaternions: {}, restPositions: {},
+    top: null, bottom: null, shoes: null, body: null, head: null, hair: null,
+    eyes: [], glasses: null, bones: {}, restQuaternions: {}, restPositions: {},
     origTopMat: null, origBottomMat: null, origShoesMat: null,
   });
 
-  // Clone scene, discover skeleton, and save rest pose
+  // Clone avatar scene safely with SkeletonUtils
   const avatarScene = useMemo(() => {
     if (!avatarGltf?.scene) return null;
-
     const clone = SkeletonUtils.clone(avatarGltf.scene);
+
     const disc = {
-      head: null, body: null, hair: null,
-      top: null, bottom: null, shoes: null,
-      eyes: [], glasses: null,
-      bones: {}, restQuaternions: {}, restPositions: {},
+      top: null, bottom: null, shoes: null, body: null, head: null, hair: null,
+      eyes: [], glasses: null, bones: {}, restQuaternions: {}, restPositions: {},
       origTopMat: null, origBottomMat: null, origShoesMat: null,
     };
 
@@ -358,33 +349,29 @@ export default function Avatar3D({
       const breathe = Math.sin(t * 1.8) * 0.025;
       const sway = Math.sin(t * 0.8) * 0.018;
 
-      // Grounded legs
-      applyRel('LeftUpLeg', 0.02, 0, -0.02);
-      applyRel('RightUpLeg', -0.02, 0, 0.02);
+      applyRel('Spine', breathe * 0.4, 0, sway * 0.3);
+      applyRel('Spine1', breathe * 0.6, 0, -sway * 0.2);
+      applyRel('Spine2', breathe * 0.8, 0, 0);
+      applyRel('Neck', -breathe * 0.3, Math.sin(t * 0.5) * 0.03, 0);
+
+      applyRel('LeftArm', breathe * 0.2, 0, -1.18);
+      applyRel('RightArm', breathe * 0.2, 0, 1.18);
+      applyRel('LeftForeArm', 0, 0, -0.15);
+      applyRel('RightForeArm', 0, 0, 0.15);
+
+      applyRel('LeftUpLeg', 0, 0, 0.02);
+      applyRel('RightUpLeg', 0, 0, -0.02);
       applyRel('LeftLeg', 0, 0, 0);
       applyRel('RightLeg', 0, 0, 0);
 
-      // Relaxed arms at sides
-      applyRel('LeftArm', breathe * 0.4, 0, -1.08 + sway);
-      applyRel('RightArm', breathe * 0.4, 0, 1.08 - sway);
-      applyRel('LeftForeArm', 0, 0, -0.25);
-      applyRel('RightForeArm', 0, 0, 0.25);
-
-      // Spine & head micro-sway
-      applyRel('Spine', breathe * 0.5, sway * 0.5, 0);
-      applyRel('Spine1', breathe, 0, 0);
-      applyRel('Neck', -breathe * 0.4, sway * 0.3, 0);
-      applyRel('Head', -breathe * 0.2, 0, 0);
-
       const hips = bones['Hips'];
       if (hips && restPositions['Hips']) {
-        hips.position.y = restPositions['Hips'].y + Math.sin(t * 1.8) * 0.005;
-        applyRel('Hips', 0, sway, 0);
+        hips.position.y = restPositions['Hips'].y + breathe * 0.008;
       }
     }
   });
 
-  // ── Virtual Try-On Fitting Engine ─────────────────────────────────────────
+  // ── Outfit Application & Auto-Rigging Engine ──────────────────────────────
   useEffect(() => {
     if (!avatarScene) return;
 
@@ -393,12 +380,13 @@ export default function Avatar3D({
       origTopMat, origBottomMat, origShoesMat,
     } = meshesRef.current;
 
-    // 1. Remove previous live dress mesh if one was attached
+    let isDisposed = false;
+
+    // 1. Cleanly remove previous active live dress mesh
     if (activeDressRef.current) {
       avatarScene.remove(activeDressRef.current);
-      if (activeDressRef.current.material) {
-        activeDressRef.current.material.dispose?.();
-      }
+      if (activeDressRef.current.geometry) activeDressRef.current.geometry.dispose?.();
+      if (activeDressRef.current.material) activeDressRef.current.material.dispose?.();
       activeDressRef.current = null;
     }
 
@@ -438,12 +426,47 @@ export default function Avatar3D({
         targetGeom = garmentGeometries.slip;
       }
 
-      if (targetGeom && top?.skeleton) {
-        const dressMat = buildGarmentMaterial(dressItem, origTopMat);
+      const dressMat = buildGarmentMaterial(dressItem, origTopMat);
+      const customGlbUrl = dressItem?.modelUrl || dressItem?.model3d?.modelUrl;
+
+      // If a custom cloud-generated GLB URL exists, load and auto-rig it
+      if (customGlbUrl && top?.skeleton) {
+        loadAndRigGlbGarment(customGlbUrl, top.skeleton, top.bindMatrix, 'dress', dressMat)
+          .then((riggedMesh) => {
+            if (isDisposed) {
+              riggedMesh.geometry?.dispose?.();
+              return;
+            }
+            if (activeDressRef.current) {
+              avatarScene.remove(activeDressRef.current);
+            }
+            riggedMesh.name = 'Avatar_Active_Dress';
+            avatarScene.add(riggedMesh);
+            activeDressRef.current = riggedMesh;
+
+            // Hide underlying body garments to completely eliminate clipping
+            if (top) top.visible = false;
+            if (bottom) bottom.visible = false;
+          })
+          .catch((err) => {
+            console.warn('[Avatar3D] Could not load custom GLB, using procedural fallback:', err.message);
+            if (targetGeom && !isDisposed) {
+              const dressSkinnedMesh = new THREE.SkinnedMesh(targetGeom, dressMat);
+              dressSkinnedMesh.name = 'Avatar_Active_Dress';
+              dressSkinnedMesh.bind(top.skeleton, top.bindMatrix);
+              dressSkinnedMesh.castShadow = true;
+              dressSkinnedMesh.receiveShadow = true;
+              dressSkinnedMesh.frustumCulled = false;
+              avatarScene.add(dressSkinnedMesh);
+              activeDressRef.current = dressSkinnedMesh;
+              if (top) top.visible = false;
+              if (bottom) bottom.visible = false;
+            }
+          });
+      } else if (targetGeom && top?.skeleton) {
+        // Direct authentic SkinnedMesh binding
         const dressSkinnedMesh = new THREE.SkinnedMesh(targetGeom, dressMat);
         dressSkinnedMesh.name = 'Avatar_Active_Dress';
-
-        // Bind dress SkinnedMesh directly to avatar's skeleton armature
         dressSkinnedMesh.bind(top.skeleton, top.bindMatrix);
         dressSkinnedMesh.castShadow = true;
         dressSkinnedMesh.receiveShadow = true;
@@ -490,6 +513,10 @@ export default function Avatar3D({
       shoes.material.needsUpdate = true;
       shoes.visible = true;
     }
+
+    return () => {
+      isDisposed = true;
+    };
   }, [outfit, avatarScene, garmentGeometries]);
 
   // ── Try-On Aura Sparkle ───────────────────────────────────────────────────

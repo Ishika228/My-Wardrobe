@@ -216,7 +216,13 @@ function backendItemToProduct(item) {
       ? (item.imageUrl.startsWith('http')
           ? item.imageUrl
           : `${BACKEND_URL}${item.imageUrl}`)
-      : null
+      : null,
+    modelUrl: item.model3d?.modelUrl
+      ? (item.model3d.modelUrl.startsWith('http') || item.model3d.modelUrl.startsWith('/models/')
+          ? item.model3d.modelUrl
+          : `${BACKEND_URL}${item.model3d.modelUrl}`)
+      : null,
+    model3d:       item.model3d || null
   };
 }
 

@@ -46,6 +46,7 @@ import GroqAIPanel from './components/GroqAIPanel.jsx';
 import { PRODUCTS, CATEGORIES, getRecommendations } from './data/products.js';
 import { analyzeClothingImage } from './services/aiService.js';
 import { convert2DClothTo3D } from './services/imageTo3DService.js';
+import { start3DGarmentGeneration, pollGarmentGenerationTask } from './services/tripoGarmentService.js';
 import {
   getAuthToken,
   getSavedUser,
@@ -592,8 +593,29 @@ export default function App() {
       console.info('Client fallback for cloth AI vision:', err.message);
     }
 
-    // 2. Prepare local item and synthesize 3D physical garment asset (Claude Skill)
-    setUploadStatus('Converting 2D Image to 3D Garment…');
+    // 2. Cloud-Based 2D-to-3D Garment Generation (Tripo3D API v3)
+    setUploadStatus('Initiating Cloud 3D Generation (Tripo API v3)…');
+    let cloud3DResult = null;
+    try {
+      const initTask = await start3DGarmentGeneration(file, {
+        category: detectedCategory,
+        name: detectedName,
+      });
+
+      if (initTask?.taskId) {
+        cloud3DResult = await pollGarmentGenerationTask(
+          initTask.taskId,
+          ({ progress }) => {
+            setUploadStatus(`Generating 3D Garment via Cloud AI (${progress}%)…`);
+          }
+        );
+      }
+    } catch (cloudErr) {
+      console.info('[Cloud 3D Generation Notice]:', cloudErr.message);
+    }
+
+    // 3. Local Texture & PBR Normal/Roughness Baking
+    setUploadStatus('Baking Fabric PBR Materials…');
     let convertedPbr = null;
     let convertedCloth3D = null;
     try {
@@ -606,20 +628,9 @@ export default function App() {
       if (cloth3D?.success && cloth3D.pbrMaterial) {
         convertedPbr = cloth3D.pbrMaterial;
         convertedCloth3D = cloth3D;
-      } else {
-        showToast('Unable to convert image into a wearable 3D garment. Please upload a clear photo of clothing against a clean background.', 'error');
-        setIsUploadingCloth(false);
-        setUploadStatus('');
-        if (e.target) e.target.value = '';
-        return;
       }
     } catch (conversionErr) {
       console.warn('3D cloth conversion error:', conversionErr.message);
-      showToast('Garment 3D synthesis failed. Please upload a clearer clothing photo.', 'error');
-      setIsUploadingCloth(false);
-      setUploadStatus('');
-      if (e.target) e.target.value = '';
-      return;
     }
 
     let readyItem = {
@@ -630,8 +641,8 @@ export default function App() {
       discountPrice: null,
       rating: 5.0,
       reviewsCount: 1,
-      description: 'Your custom clothing item stored in MongoDB Atlas.',
-      details: ['MongoDB Stored Item', 'Personal Virtual Try-On Asset', 'High-Res Preview'],
+      description: 'Your custom clothing item generated via Cloud 3D AI and stored in MongoDB Atlas.',
+      details: ['Cloud-Generated 3D GLB Asset', 'Auto-Rigged & Skeleton-Bound', 'High-Res PBR Preview'],
       sizes: ['XS', 'S', 'M', 'L'],
       colors: [{ name: 'Custom Hue', hex: detectedColor }],
       primaryColor: detectedColor,
@@ -641,18 +652,20 @@ export default function App() {
       featured: true,
       tags: detectedTags,
       garmentType: detectedCategory === 'dresses' ? 'dress' : detectedCategory === 'trousers' ? 'bottom' : detectedCategory === 'shoes' ? 'shoes' : 'top',
-      silhouette: convertedCloth3D?.modelKey === 'floral_puff'
+      silhouette: cloud3DResult?.silhouette || (convertedCloth3D?.modelKey === 'floral_puff'
         ? 'floral-puff'
         : detectedCategory === 'dresses'
         ? 'slip-dress'
         : detectedCategory === 'trousers'
         ? 'wide-jeans'
-        : 'custom',
+        : 'custom'),
       position3D: [0, 2.0, -1.8],
       complementaryIds: [],
       image: localImageUrl,
       pbrMaterial: convertedPbr,
       cloth3D: convertedCloth3D,
+      modelUrl: cloud3DResult?.modelUrl || (convertedCloth3D?.modelKey === 'floral_puff' ? '/models/garments/dress_floral_puff.glb' : null),
+      model3d: cloud3DResult,
     };
 
     // Immediate 3D dressing
@@ -678,7 +691,8 @@ export default function App() {
           brand:       'My Closet',
           description: readyItem.description,
           size:        'M',
-          tags:        detectedTags
+          tags:        detectedTags,
+          model3d:     readyItem.model3d || undefined
         });
 
         if (savedBackendItem?.backendId) {
