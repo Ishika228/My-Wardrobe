@@ -97,6 +97,9 @@ function buildGarmentMaterial(garmentItem, origMat) {
     existingMat.transparent = true;
     existingMat.alphaTest = 0.5;
     existingMat.depthWrite = true;
+    existingMat.polygonOffset = true;
+    existingMat.polygonOffsetFactor = -1.5;
+    existingMat.polygonOffsetUnits = -1.5;
     existingMat.side = THREE.DoubleSide;
     existingMat.needsUpdate = true;
     return existingMat;
@@ -126,6 +129,9 @@ function buildGarmentMaterial(garmentItem, origMat) {
     clearcoat,
     clearcoatRoughness,
     side: THREE.DoubleSide,
+    polygonOffset: true,
+    polygonOffsetFactor: -1.5,
+    polygonOffsetUnits: -1.5,
   };
 
   // If this is the floral puff dress, use the cleaned floral texture with normal and roughness maps
@@ -211,6 +217,21 @@ export default function Avatar3D({
     eyes: [], glasses: null, bones: {}, restQuaternions: {}, restPositions: {},
     origTopMat: null, origBottomMat: null, origShoesMat: null,
   });
+
+  // Natural bare skin material to display avatar body parts (arms, neck, legs)
+  // without any internal clothing (default t-shirt & gym leggings)
+  const skinMat = useMemo(() => {
+    const skinColor = personalizedProfile?.skinColor || '#d9997d';
+    return new THREE.MeshStandardMaterial({
+      color: new THREE.Color(skinColor),
+      roughness: 0.60,
+      metalness: 0.0,
+      side: THREE.DoubleSide,
+      polygonOffset: true,
+      polygonOffsetFactor: 1.0,
+      polygonOffsetUnits: 1.0,
+    });
+  }, [personalizedProfile?.skinColor]);
 
   // Clone avatar scene safely with SkeletonUtils and capture native rest quaternions & positions
   const avatarScene = useMemo(() => {
@@ -411,6 +432,10 @@ export default function Avatar3D({
           body.material.roughness = 0.58;
           body.material.needsUpdate = true;
         }
+        if (skinMat) {
+          skinMat.color.copy(skinCol);
+          skinMat.needsUpdate = true;
+        }
       }
       if (head?.morphTargetDictionary && head?.morphTargetInfluences && personalizedProfile.morphTargets) {
         const dict = head.morphTargetDictionary;
@@ -436,8 +461,12 @@ export default function Avatar3D({
         body.material.color = defaultSkin;
         body.material.needsUpdate = true;
       }
+      if (skinMat) {
+        skinMat.color.set('#d9997d');
+        skinMat.needsUpdate = true;
+      }
     }
-  }, [mode, personalizedProfile, avatarScene]);
+  }, [mode, personalizedProfile, avatarScene, skinMat]);
 
   // ── Outfit Application & Auto-Rigging Engine (Replacement-Based Try-On) ──
   useEffect(() => {
@@ -527,16 +556,26 @@ export default function Avatar3D({
             avatarScene.add(riggedMesh);
             activeDressRef.current = riggedMesh;
 
-            // Hide underlying body garments to completely eliminate clipping
-            if (top) top.visible = false;
-            if (bottom) bottom.visible = false;
+            // Preserve body parts (arms and legs) as bare natural skin under the dress (no internal clothes)
+            if (top) {
+              top.visible = true;
+              top.material = skinMat;
+              top.material.needsUpdate = true;
+            }
+            if (bottom) {
+              bottom.visible = true;
+              bottom.material = skinMat;
+              bottom.material.needsUpdate = true;
+            }
           })
           .catch((err) => {
             console.warn('[Avatar3D] Could not load custom GLB, using procedural fallback:', err.message);
             if (isDisposed || tryOnSeqRef.current !== currentSeq) return;
             cleanAllAttachedDresses();
             if (targetGeom && top?.skeleton) {
-              const dressSkinnedMesh = new THREE.SkinnedMesh(targetGeom.clone(), dressMat);
+              const geom = targetGeom.clone();
+              geom.scale(1.025, 1.005, 1.025);
+              const dressSkinnedMesh = new THREE.SkinnedMesh(geom, dressMat);
               dressSkinnedMesh.name = 'Avatar_Active_Dress';
               dressSkinnedMesh.userData.isTryOnGarment = true;
               dressSkinnedMesh.bind(top.skeleton, top.bindMatrix);
@@ -545,14 +584,24 @@ export default function Avatar3D({
               dressSkinnedMesh.frustumCulled = false;
               avatarScene.add(dressSkinnedMesh);
               activeDressRef.current = dressSkinnedMesh;
-              if (top) top.visible = false;
-              if (bottom) bottom.visible = false;
+              if (top) {
+                top.visible = true;
+                top.material = skinMat;
+                top.material.needsUpdate = true;
+              }
+              if (bottom) {
+                bottom.visible = true;
+                bottom.material = skinMat;
+                bottom.material.needsUpdate = true;
+              }
             }
           });
       } else if (targetGeom && top?.skeleton) {
         // Direct authentic SkinnedMesh binding
         cleanAllAttachedDresses();
-        const dressSkinnedMesh = new THREE.SkinnedMesh(targetGeom.clone(), dressMat);
+        const geom = targetGeom.clone();
+        geom.scale(1.025, 1.005, 1.025);
+        const dressSkinnedMesh = new THREE.SkinnedMesh(geom, dressMat);
         dressSkinnedMesh.name = 'Avatar_Active_Dress';
         dressSkinnedMesh.userData.isTryOnGarment = true;
         dressSkinnedMesh.bind(top.skeleton, top.bindMatrix);
@@ -563,9 +612,17 @@ export default function Avatar3D({
         avatarScene.add(dressSkinnedMesh);
         activeDressRef.current = dressSkinnedMesh;
 
-        // Hide separate top and bottom pants underneath to completely eliminate clipping
-        if (top) top.visible = false;
-        if (bottom) bottom.visible = false;
+        // Preserve body parts (arms and legs) as bare natural skin under the dress (no internal clothes)
+        if (top) {
+          top.visible = true;
+          top.material = skinMat;
+          top.material.needsUpdate = true;
+        }
+        if (bottom) {
+          bottom.visible = true;
+          bottom.material = skinMat;
+          bottom.material.needsUpdate = true;
+        }
       }
     } else {
       // ── SEPARATE PIECES (Tops & Trousers): Ensure any active dress is completely removed ──
@@ -575,8 +632,9 @@ export default function Avatar3D({
       if (top) {
         if (outfit?.top) {
           top.material = buildGarmentMaterial(outfit.top, origTopMat);
-        } else if (origTopMat) {
-          top.material = origTopMat.clone();
+        } else {
+          // If no top selected, display bare upper body skin without internal clothes
+          top.material = skinMat;
         }
         top.material.needsUpdate = true;
         top.visible = true;
@@ -585,8 +643,9 @@ export default function Avatar3D({
       if (bottom) {
         if (outfit?.bottom) {
           bottom.material = buildGarmentMaterial(outfit.bottom, origBottomMat);
-        } else if (origBottomMat) {
-          bottom.material = origBottomMat.clone();
+        } else {
+          // If no bottom selected, display bare lower body skin without internal clothes
+          bottom.material = skinMat;
         }
         bottom.material.needsUpdate = true;
         bottom.visible = true;
@@ -608,7 +667,7 @@ export default function Avatar3D({
       isDisposed = true;
       tryOnSeqRef.current++;
     };
-  }, [outfit, avatarScene, garmentGeometries]);
+  }, [outfit, avatarScene, garmentGeometries, skinMat]);
 
   // ── Try-On Aura Sparkle ───────────────────────────────────────────────────
   const auraRef = useRef();
