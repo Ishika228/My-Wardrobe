@@ -35,7 +35,8 @@ import {
   User,
   X,
   Trash2,
-  Database
+  Database,
+  AlertCircle
 } from 'lucide-react';
 import VRScene from './components/VRScene.jsx';
 import ProductDetailsModal from './components/ProductDetailsModal.jsx';
@@ -122,7 +123,8 @@ export default function App() {
   const [uploadedClothes, setUploadedClothes] = useState([]);
   const [isUploadingCloth, setIsUploadingCloth] = useState(false);
   const [uploadStatus, setUploadStatus]       = useState('');
-  const [toastMessage, setToastMessage]       = useState('');
+  const [toast, setToast]                     = useState(null);
+  const toastTimerRef                         = useRef(null);
   const fileInputRef = useRef(null);
 
   // --- Wardrobe View Mode: 'wardrobe' (MongoDB) vs 'catalog' (Boutique) ---
@@ -139,10 +141,12 @@ export default function App() {
   const [loginError, setLoginError]           = useState('');
   const [isLoggingIn, setIsLoggingIn]         = useState(false);
 
-  // Helper to trigger toast notification
-  const showToast = useCallback((msg) => {
-    setToastMessage(msg);
-    setTimeout(() => setToastMessage(''), 3000);
+  // Helper to trigger toast notification with optional error / success variant
+  const showToast = useCallback((msg, type = 'success') => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    const text = typeof msg === 'string' ? msg : msg?.text || '';
+    setToast({ text, type });
+    toastTimerRef.current = setTimeout(() => setToast(null), 3600);
   }, []);
 
   // On mount: ensure authentication and load all MongoDB wardrobe clothes
@@ -530,6 +534,13 @@ export default function App() {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    // Validate that uploaded file is an image
+    if (!file.type || !file.type.startsWith('image/')) {
+      showToast('Please upload a valid clothing image (PNG, JPG, or WEBP).', 'error');
+      if (e.target) e.target.value = '';
+      return;
+    }
+
     setIsUploadingCloth(true);
     setUploadStatus('Analyzing Garment with AI…');
     const localImageUrl = URL.createObjectURL(file);
@@ -576,7 +587,7 @@ export default function App() {
     }
 
     // 2. Prepare local item and synthesize 3D physical garment asset (Claude Skill)
-    setUploadStatus('Converting 2D Image to 3D Garment (Claude Skill)…');
+    setUploadStatus('Converting 2D Image to 3D Garment…');
     let convertedPbr = null;
     let convertedCloth3D = null;
     try {
@@ -588,9 +599,20 @@ export default function App() {
       if (cloth3D?.success && cloth3D.pbrMaterial) {
         convertedPbr = cloth3D.pbrMaterial;
         convertedCloth3D = cloth3D;
+      } else {
+        showToast('Unable to convert image into a wearable 3D garment. Please upload a clear photo of clothing against a clean background.', 'error');
+        setIsUploadingCloth(false);
+        setUploadStatus('');
+        if (e.target) e.target.value = '';
+        return;
       }
     } catch (conversionErr) {
-      console.warn('3D cloth conversion fallback:', conversionErr.message);
+      console.warn('3D cloth conversion error:', conversionErr.message);
+      showToast('Garment 3D synthesis failed. Please upload a clearer clothing photo.', 'error');
+      setIsUploadingCloth(false);
+      setUploadStatus('');
+      if (e.target) e.target.value = '';
+      return;
     }
 
     let readyItem = {
@@ -759,19 +781,27 @@ export default function App() {
         </div>
       )}
 
-      {/* MongoDB Database Toast Notification */}
-      {toastMessage && (
+      {/* Toast Notification (Success / Info / Error) */}
+      {toast && (
         <div
           className="tryon-toast"
           style={{
             bottom: 78,
-            background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.95), rgba(5, 150, 105, 0.95))',
-            borderColor: '#34d399',
-            boxShadow: '0 8px 32px rgba(16, 185, 129, 0.35)'
+            background: toast.type === 'error'
+              ? 'linear-gradient(135deg, rgba(225, 29, 72, 0.95), rgba(190, 18, 60, 0.95))'
+              : 'linear-gradient(135deg, rgba(16, 185, 129, 0.95), rgba(5, 150, 105, 0.95))',
+            borderColor: toast.type === 'error' ? '#fb7185' : '#34d399',
+            boxShadow: toast.type === 'error'
+              ? '0 8px 32px rgba(225, 29, 72, 0.35)'
+              : '0 8px 32px rgba(16, 185, 129, 0.35)'
           }}
         >
-          <Database size={15} style={{ color: '#fff' }} />
-          <span style={{ color: '#fff', fontWeight: 600 }}>{toastMessage}</span>
+          {toast.type === 'error' ? (
+            <AlertCircle size={15} style={{ color: '#fff' }} />
+          ) : (
+            <Database size={15} style={{ color: '#fff' }} />
+          )}
+          <span style={{ color: '#fff', fontWeight: 600 }}>{toast.text}</span>
         </div>
       )}
 
