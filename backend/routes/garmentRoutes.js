@@ -1,6 +1,7 @@
 import express from 'express';
 import {
   getGarmentConfig,
+  extractGarmentOnly,
   generateGarment3D,
   getGarmentTaskStatus,
   getGarmentByClothingItem,
@@ -13,9 +14,21 @@ const router = express.Router();
 // Configuration status & instructions
 router.get('/config', getGarmentConfig);
 
+// Segment & extract ONLY the clothing item (removes person & background)
+router.post('/extract', optionalProtect, (req, res, next) => {
+  const contentType = req.headers['content-type'] || '';
+  if (contentType.includes('multipart/form-data')) {
+    uploadClothingImageMiddleware(req, res, (err) => {
+      if (err) return next(err);
+      extractGarmentOnly(req, res, next);
+    });
+  } else {
+    extractGarmentOnly(req, res, next);
+  }
+});
+
 // Start 2D-to-3D generation (supports multipart image file or JSON body)
 router.post('/generate-3d', optionalProtect, (req, res, next) => {
-  // If Content-Type is multipart/form-data, pass through upload middleware
   const contentType = req.headers['content-type'] || '';
   if (contentType.includes('multipart/form-data')) {
     uploadClothingImageMiddleware(req, res, (err) => {
@@ -34,4 +47,3 @@ router.get('/tasks/:taskId', optionalProtect, getGarmentTaskStatus);
 router.get('/item/:clothingItemId', optionalProtect, getGarmentByClothingItem);
 
 export default router;
-

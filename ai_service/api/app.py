@@ -3,8 +3,9 @@ app.py
 WardrobeWise AI Microservice built with FastAPI.
 Provides REST API endpoints for:
 1. Clothing image recognition, dominant color detection & pattern analysis
-2. Smart outfit recommendations (occasion & season aware)
-3. Unused clothing identification and revival
+2. High-precision garment extraction & background/person removal (OpenCV + Masking)
+3. Smart outfit recommendations (occasion & season aware)
+4. Unused clothing identification and revival
 """
 
 import json
@@ -14,7 +15,7 @@ import subprocess
 import sys
 import tempfile
 import uuid
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -30,6 +31,7 @@ from vision.classifier import (
     SUPPORTED_CATEGORIES,
     SUPPORTED_PATTERNS
 )
+from vision.segmenter import extract_garment
 from api.schemas import (
     ImageAnalysisResponse,
     RecommendationRequest,
@@ -89,17 +91,14 @@ async def analyze_clothing(
     Returns: category, dominant & secondary color, pattern, confidence, and metadata.
     """
     target_path = None
-    temp_file = False
 
     try:
         if file is not None:
-            # Save uploaded file to temporary location
             suffix = os.path.splitext(file.filename or "upload.jpg")[1]
             temp_name = f"upload_{uuid.uuid4().hex[:8]}{suffix}"
             target_path = os.path.join(UPLOAD_DIR, temp_name)
             with open(target_path, "wb") as buffer:
                 shutil.copyfileobj(file.file, buffer)
-            temp_file = True
         elif image_path:
             target_path = image_path
         else:
@@ -108,7 +107,6 @@ async def analyze_clothing(
                 detail="Either 'file' upload or 'image_path' must be provided."
             )
 
-        # Run vision analysis pipeline
         result = analyze_clothing_image(target_path, item_id=item_id)
         return result
 
@@ -119,9 +117,102 @@ async def analyze_clothing(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Image analysis error: {str(e)}"
         )
-    finally:
-        # If temporary upload, clean up or preserve based on config
-        pass
+
+
+@app.post("/api/ai/segment-garment")
+async def segment_garment_endpoint(
+    file: Optional[UploadFile] = File(None),
+    image_path: Optional[str] = Form(None),
+    garment_bbox: Optional[str] = Form(None),
+    skin_regions: Optional[str] = Form(None),
+    output_filename: Optional[str] = Form(None)
+):
+    """
+    Extracts ONLY the clothing garment, removing person and background.
+    Returns 4-channel transparent PNG and binary segmentation mask.
+    """
+    target_input = None
+
+    try:
+        if file is not None:
+            suffix = os.path.splitext(file.filename or "garment.png")[1]
+            temp_name = f"raw_{uuid.uuid4().hex[:8]}{suffix}"
+            target_input = os.path.join(UPLOAD_DIR, temp_name)
+            with open(target_input, "wb") as buffer:
+                shutil.copyfileobj(file.file, buffer)
+        elif image_path and os.path.exists(image_path):
+            target_input = image_path
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Either 'file' upload or valid 'image_path' must be provided."
+            )
+
+        # Parse bbox hints if provided
+        bbox_list = None
+        if garment_bbox:
+            try:
+                bbox_list = json.loads(garment_bbox) if isinstance(garment_bbox, str) else garment_bbox
+            except Exception:
+                pass
+
+        skin_list = None
+        if skin_regions:
+            try:
+                skin_list = json.loads(skin_regions) if isinstance(skin_regions, str) else skin_regions
+            except Exception:
+                pass
+
+        # Determine target output paths
+        fname = output_filename or f"extracted_{uuid.uuid4().hex[:8]}.png"
+        if not fname.endswith(".png"):
+            fname = f"{fname}.png"
+        mask_fname = f"mask_{fname}"
+
+        # Save in backend and Frontend uploads directory
+        backend_ext_dir = os.path.abspath(os.path.join(BASE_DIR, "..", "backend", "uploads", "extracted"))
+        backend_mask_dir = os.path.abspath(os.path.join(BASE_DIR, "..", "backend", "uploads", "masks"))
+        frontend_ext_dir = os.path.abspath(os.path.join(BASE_DIR, "..", "Frontend", "public", "uploads", "extracted"))
+        frontend_mask_dir = os.path.abspath(os.path.join(BASE_DIR, "..", "Frontend", "public", "uploads", "masks"))
+
+        for d in [backend_ext_dir, backend_mask_dir, frontend_ext_dir, frontend_mask_dir]:
+            os.makedirs(d, exist_ok=True)
+
+        backend_ext_path = os.path.join(backend_ext_dir, fname)
+        backend_mask_path = os.path.join(backend_mask_dir, mask_fname)
+
+        # Perform high-precision garment extraction
+        result = extract_garment(
+            image_input=target_input,
+            garment_bbox=bbox_list,
+            skin_regions=skin_list,
+            output_path=backend_ext_path,
+            mask_path=backend_mask_path,
+        )
+
+        # Copy to Frontend public directory for direct browser display
+        try:
+            shutil.copyfile(backend_ext_path, os.path.join(frontend_ext_dir, fname))
+            shutil.copyfile(backend_mask_path, os.path.join(frontend_mask_dir, mask_fname))
+        except Exception as copy_err:
+            print(f"[Warning] Could not copy to Frontend: {copy_err}")
+
+        return {
+            "success": True,
+            "filename": fname,
+            "extractedImageUrl": f"/uploads/extracted/{fname}",
+            "maskUrl": f"/uploads/masks/{mask_fname}",
+            "width": result.get("width"),
+            "height": result.get("height"),
+            "garment_coverage": result.get("garment_coverage"),
+            "crop_rect": result.get("crop_rect"),
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Garment segmentation error: {str(e)}"
+        )
 
 
 def _invoke_js_recommender(payload: Dict[str, Any]) -> Dict[str, Any]:

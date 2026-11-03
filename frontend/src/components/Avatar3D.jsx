@@ -1,6 +1,6 @@
 import React, { useRef, useMemo, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
-import { useGLTF } from '@react-three/drei';
+import { useGLTF, useAnimations } from '@react-three/drei';
 import * as THREE from 'three';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { loadAndRigGlbGarment, fitAndRigStaticGarment } from '../services/garmentRiggingService.js';
@@ -156,17 +156,35 @@ export default function Avatar3D({
   isTryOnEffect = false,
   position = [0, 0, 0],
   rotation = [0, 0, 0],
+  mode = 'demo',
+  personalizedProfile = null,
 }) {
   const groupRef = useRef();
   const activeDressRef = useRef(null);
 
-  // Load avatar and authentic 3D garment GLB assets
+  // Load avatar and authentic 3D garment GLB assets & mocap animations
   const avatarGltf = useGLTF('/models/female_avatar.glb');
+  const animsGltf = useGLTF('/models/animations.glb');
   const dressFloralGltf = useGLTF('/models/garments/dress_floral_puff.glb');
   const dressSlipGltf = useGLTF('/models/garments/dress_slip.glb');
   const dressSareeGltf = useGLTF('/models/garments/dress_saree.glb');
   const topCasualGltf = useGLTF('/models/garments/top_casual.glb');
   const trouserJeansGltf = useGLTF('/models/garments/trouser_jeans.glb');
+
+  // Retarget Mixamo animation tracks to match ReadyPlayerMe avatar bones (strip mixamorig: prefix)
+  const retargetedAnimations = useMemo(() => {
+    if (!animsGltf?.animations || animsGltf.animations.length === 0) return [];
+    return animsGltf.animations.map((clip) => {
+      const cloned = clip.clone();
+      cloned.tracks.forEach((track) => {
+        track.name = track.name.replace(/^mixamorig:?/, '');
+      });
+      return cloned;
+    });
+  }, [animsGltf]);
+
+  // Set up animations on root group
+  const { actions } = useAnimations(retargetedAnimations, groupRef);
 
   // Extract authentic 3D garment geometries
   const garmentGeometries = useMemo(() => {
@@ -193,7 +211,7 @@ export default function Avatar3D({
 
   const meshesRef = useRef({
     top: null, bottom: null, shoes: null, body: null, head: null, hair: null,
-    eyes: [], glasses: null, bones: {}, restQuaternions: {}, restPositions: {},
+    eyes: [], glasses: null, bones: {},
     origTopMat: null, origBottomMat: null, origShoesMat: null,
   });
 
@@ -204,15 +222,13 @@ export default function Avatar3D({
 
     const disc = {
       top: null, bottom: null, shoes: null, body: null, head: null, hair: null,
-      eyes: [], glasses: null, bones: {}, restQuaternions: {}, restPositions: {},
+      eyes: [], glasses: null, bones: {},
       origTopMat: null, origBottomMat: null, origShoesMat: null,
     };
 
     clone.traverse((child) => {
       if (child.isBone) {
         disc.bones[child.name] = child;
-        disc.restQuaternions[child.name] = child.quaternion.clone();
-        disc.restPositions[child.name] = child.position.clone();
       }
 
       if (child.isMesh || child.isSkinnedMesh) {
@@ -273,17 +289,33 @@ export default function Avatar3D({
     return clone;
   }, [avatarGltf]);
 
-  // ── Posture & Locomotion Animation Loop ───────────────────────────────────
-  const walkPhaseRef = useRef(0);
+  // ── Manage Idle vs Walk Animation transitions via Mixamo mocap ────────────
+  useEffect(() => {
+    if (!actions) return;
+
+    const idleAction = actions['idle'];
+    const walkAction = actions['walk'];
+
+    if (isWalking) {
+      if (idleAction) idleAction.fadeOut(0.25);
+      if (walkAction) {
+        walkAction.reset().fadeIn(0.25).play();
+        walkAction.timeScale = 1.05;
+      }
+    } else {
+      if (walkAction) walkAction.fadeOut(0.25);
+      if (idleAction) {
+        idleAction.reset().fadeIn(0.25).play();
+      }
+    }
+  }, [isWalking, actions]);
+
+  // ── Procedural Eye Blinking & Facial Micro-expressions ────────────────────
   const blinkTimerRef = useRef(0);
   const nextBlinkIntervalRef = useRef(3.5);
 
   useFrame((state, delta) => {
-    const { bones, restQuaternions, restPositions, head } = meshesRef.current;
-    if (!bones || Object.keys(bones).length === 0) return;
-    const t = state.clock.getElapsedTime();
-
-    // 1. Procedural Eye Blinking & Facial Micro-expressions
+    const { head } = meshesRef.current;
     if (head?.morphTargetDictionary && head?.morphTargetInfluences) {
       const dict = head.morphTargetDictionary;
       const infl = head.morphTargetInfluences;
@@ -302,74 +334,61 @@ export default function Avatar3D({
         }
       }
     }
+  });
 
-    const applyRel = (boneName, ex, ey, ez) => {
-      const bone = bones[boneName];
-      const rest = restQuaternions[boneName];
-      if (!bone || !rest) return;
-      bone.quaternion
-        .copy(rest)
-        .multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(ex, ey, ez, 'XYZ')));
-    };
+  // ── Biometric Profile Adaptation (Custom Body Scaling) ───────────────────
+  useEffect(() => {
+    const { bones, head, body } = meshesRef.current;
+    if (!bones || Object.keys(bones).length === 0) return;
 
-    if (isWalking) {
-      // --- FLUID WALKING STRIDE ---
-      walkPhaseRef.current += delta * 7.2;
-      const p = walkPhaseRef.current;
-      const ls = Math.sin(p) * 0.42;
-      const rs = Math.sin(p + Math.PI) * 0.42;
-      const lk = Math.max(0, -Math.sin(p)) * 0.55;
-      const rk = Math.max(0, -Math.sin(p + Math.PI)) * 0.55;
-
-      applyRel('LeftUpLeg', ls, 0, 0);
-      applyRel('RightUpLeg', rs, 0, 0);
-      applyRel('LeftLeg', -lk, 0, 0);
-      applyRel('RightLeg', -rk, 0, 0);
-
-      // Arm swing in counter-cadence with legs
-      const la = Math.sin(p + Math.PI) * 0.32;
-      const ra = Math.sin(p) * 0.32;
-      applyRel('LeftArm', la, 0, -1.05);
-      applyRel('RightArm', ra, 0, 1.05);
-      applyRel('LeftForeArm', 0, 0, -0.22);
-      applyRel('RightForeArm', 0, 0, 0.22);
-
-      // Hip cadence and spine counter-rotation
-      const hips = bones['Hips'];
-      if (hips && restPositions['Hips']) {
-        hips.position.y = restPositions['Hips'].y + Math.abs(Math.sin(p)) * 0.025;
-        applyRel('Hips', 0, Math.sin(p) * 0.04, 0);
-        applyRel('Spine', 0, -Math.sin(p) * 0.03, 0);
-        applyRel('Spine1', 0, -Math.sin(p) * 0.02, 0);
-        applyRel('Neck', 0, Math.sin(p) * 0.02, 0);
+    if (mode === 'personalized' && personalizedProfile) {
+      if (personalizedProfile.boneScales) {
+        Object.entries(personalizedProfile.boneScales).forEach(([bName, scale]) => {
+          const bone = bones[bName];
+          if (bone && Array.isArray(scale) && scale.length === 3) {
+            bone.scale.set(scale[0], scale[1], scale[2]);
+          }
+        });
+      }
+      if (personalizedProfile.skinColor) {
+        const skinCol = new THREE.Color(personalizedProfile.skinColor);
+        if (head?.material) {
+          head.material.color = skinCol;
+          head.material.roughness = 0.58;
+          head.material.needsUpdate = true;
+        }
+        if (body?.material) {
+          body.material.color = skinCol;
+          body.material.roughness = 0.58;
+          body.material.needsUpdate = true;
+        }
+      }
+      if (head?.morphTargetDictionary && head?.morphTargetInfluences && personalizedProfile.morphTargets) {
+        const dict = head.morphTargetDictionary;
+        const infl = head.morphTargetInfluences;
+        Object.entries(personalizedProfile.morphTargets).forEach(([targetName, weight]) => {
+          if (dict[targetName] !== undefined) {
+            infl[dict[targetName]] = weight;
+          }
+        });
       }
     } else {
-      // --- NATURAL IDLE STANCE ---
-      walkPhaseRef.current = THREE.MathUtils.lerp(walkPhaseRef.current, 0, 0.1);
-      const breathe = Math.sin(t * 1.8) * 0.025;
-      const sway = Math.sin(t * 0.8) * 0.018;
-
-      applyRel('Spine', breathe * 0.4, 0, sway * 0.3);
-      applyRel('Spine1', breathe * 0.6, 0, -sway * 0.2);
-      applyRel('Spine2', breathe * 0.8, 0, 0);
-      applyRel('Neck', -breathe * 0.3, Math.sin(t * 0.5) * 0.03, 0);
-
-      applyRel('LeftArm', breathe * 0.2, 0, -1.18);
-      applyRel('RightArm', breathe * 0.2, 0, 1.18);
-      applyRel('LeftForeArm', 0, 0, -0.15);
-      applyRel('RightForeArm', 0, 0, 0.15);
-
-      applyRel('LeftUpLeg', 0, 0, 0.02);
-      applyRel('RightUpLeg', 0, 0, -0.02);
-      applyRel('LeftLeg', 0, 0, 0);
-      applyRel('RightLeg', 0, 0, 0);
-
-      const hips = bones['Hips'];
-      if (hips && restPositions['Hips']) {
-        hips.position.y = restPositions['Hips'].y + breathe * 0.008;
+      const resetBones = ['Head', 'LeftShoulder', 'RightShoulder', 'Spine', 'Hips', 'LeftUpLeg', 'RightUpLeg'];
+      resetBones.forEach((bName) => {
+        const bone = bones[bName];
+        if (bone) bone.scale.set(1, 1, 1);
+      });
+      const defaultSkin = new THREE.Color('#fbe2d3');
+      if (head?.material) {
+        head.material.color = defaultSkin;
+        head.material.needsUpdate = true;
+      }
+      if (body?.material) {
+        body.material.color = defaultSkin;
+        body.material.needsUpdate = true;
       }
     }
-  });
+  }, [mode, personalizedProfile, avatarScene]);
 
   // ── Outfit Application & Auto-Rigging Engine ──────────────────────────────
   useEffect(() => {
@@ -451,7 +470,7 @@ export default function Avatar3D({
           .catch((err) => {
             console.warn('[Avatar3D] Could not load custom GLB, using procedural fallback:', err.message);
             if (targetGeom && !isDisposed) {
-              const dressSkinnedMesh = new THREE.SkinnedMesh(targetGeom, dressMat);
+              const dressSkinnedMesh = new THREE.SkinnedMesh(targetGeom.clone(), dressMat);
               dressSkinnedMesh.name = 'Avatar_Active_Dress';
               dressSkinnedMesh.bind(top.skeleton, top.bindMatrix);
               dressSkinnedMesh.castShadow = true;
@@ -465,7 +484,7 @@ export default function Avatar3D({
           });
       } else if (targetGeom && top?.skeleton) {
         // Direct authentic SkinnedMesh binding
-        const dressSkinnedMesh = new THREE.SkinnedMesh(targetGeom, dressMat);
+        const dressSkinnedMesh = new THREE.SkinnedMesh(targetGeom.clone(), dressMat);
         dressSkinnedMesh.name = 'Avatar_Active_Dress';
         dressSkinnedMesh.bind(top.skeleton, top.bindMatrix);
         dressSkinnedMesh.castShadow = true;
@@ -554,6 +573,7 @@ export default function Avatar3D({
 
 // Preload avatar and real 3D garment GLB assets
 useGLTF.preload('/models/female_avatar.glb');
+useGLTF.preload('/models/animations.glb');
 useGLTF.preload('/models/garments/dress_floral_puff.glb');
 useGLTF.preload('/models/garments/dress_slip.glb');
 useGLTF.preload('/models/garments/dress_saree.glb');

@@ -43,10 +43,11 @@ import ProductDetailsModal from './components/ProductDetailsModal.jsx';
 import CartDrawer from './components/CartDrawer.jsx';
 import WishlistDrawer from './components/WishlistDrawer.jsx';
 import GroqAIPanel from './components/GroqAIPanel.jsx';
+import GarmentExtractionModal from './components/GarmentExtractionModal.jsx';
 import { PRODUCTS, CATEGORIES, getRecommendations } from './data/products.js';
 import { analyzeClothingImage } from './services/aiService.js';
 import { convert2DClothTo3D } from './services/imageTo3DService.js';
-import { start3DGarmentGeneration, pollGarmentGenerationTask } from './services/tripoGarmentService.js';
+import { start3DGarmentGeneration, pollGarmentGenerationTask, extractGarmentOnly } from './services/tripoGarmentService.js';
 import {
   getAuthToken,
   getSavedUser,
@@ -127,6 +128,18 @@ export default function App() {
   const [toast, setToast]                     = useState(null);
   const toastTimerRef                         = useRef(null);
   const fileInputRef = useRef(null);
+
+  // --- Garment Extraction & Inspection Modal State ---
+  const [extractionModal, setExtractionModal] = useState({
+    isOpen: false,
+    stage: 'extracting',
+    originalImage: null,
+    extractedImage: null,
+    maskImage: null,
+    geminiData: null,
+    errorMessage: '',
+    pendingFile: null,
+  });
 
   // --- Wardrobe View Mode: 'wardrobe' (MongoDB) vs 'catalog' (Boutique) ---
   const [panelTab, setPanelTab]               = useState('wardrobe');
@@ -530,7 +543,7 @@ export default function App() {
     setDpadInput({ x: 0, y: 0 });
   };
 
-  // --- Upload Cloth Image Handler: Stores in MongoDB & tries on 3D Avatar ---
+  // --- Upload Cloth Image Handler: Opens Garment Extraction & Inspection Pipeline ---
   const handleClothUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -542,192 +555,223 @@ export default function App() {
       return;
     }
 
-    setIsUploadingCloth(true);
-    setUploadStatus('Analyzing Garment with AI…');
     const localImageUrl = URL.createObjectURL(file);
 
-    let detectedCategory = activeCategory !== 'all' ? activeCategory : 'tops';
-    let detectedName = file.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ');
-    detectedName = detectedName.replace(/\b\w/g, (c) => c.toUpperCase());
-    let detectedColor = '#e5779c';
-    let detectedPattern = 'Plain';
-    let detectedTags = ['custom', 'uploaded', 'wardrobe'];
+    // Open Garment Extraction Modal in "extracting" state
+    setExtractionModal({
+      isOpen: true,
+      stage: 'extracting',
+      originalImage: localImageUrl,
+      extractedImage: null,
+      maskImage: null,
+      geminiData: null,
+      errorMessage: '',
+      pendingFile: file,
+    });
 
-    // 1. Vision AI classification
     try {
-      const aiResult = await analyzeClothingImage(file);
-      if (aiResult) {
-        const catGroup = (aiResult.category_group || '').toLowerCase();
-        const catName = (aiResult.category || aiResult.classification || '').toLowerCase();
+      // Execute OpenCV GrabCut + skin subtraction & Gemini fashion analysis
+      const extractRes = await extractGarmentOnly(file);
+      const extractedUrl = extractRes.extractedImageUrl
+        ? (extractRes.extractedImageUrl.startsWith('http') ? extractRes.extractedImageUrl : `http://localhost:5000${extractRes.extractedImageUrl}`)
+        : localImageUrl;
+      const maskUrl = extractRes.maskUrl
+        ? (extractRes.maskUrl.startsWith('http') ? extractRes.maskUrl : `http://localhost:5000${extractRes.maskUrl}`)
+        : null;
 
-        if (catGroup === 'top' || catName.includes('shirt') || catName.includes('top') || catName.includes('sweater')) {
-          detectedCategory = 'tops';
-        } else if (catGroup === 'bottom' || catName.includes('jean') || catName.includes('pant') || catName.includes('trouser') || catName.includes('skirt')) {
-          detectedCategory = 'trousers';
-        } else if (catGroup === 'dress' || catName.includes('dress')) {
-          detectedCategory = 'dresses';
-        } else if (catGroup === 'outerwear' || catName.includes('jacket') || catName.includes('coat') || catName.includes('blazer')) {
-          detectedCategory = 'outerwear';
-        } else if (catGroup === 'footwear' || catName.includes('shoe') || catName.includes('sneaker') || catName.includes('heel') || catName.includes('boot')) {
-          detectedCategory = 'shoes';
-        } else if (catGroup === 'accessory' || catName.includes('bag') || catName.includes('belt') || catName.includes('accessory')) {
-          detectedCategory = 'accessories';
-        }
-
-        if (aiResult.colour?.dominant_hex) {
-          detectedColor = aiResult.colour.dominant_hex;
-        } else if (aiResult.color_dominant?.hex) {
-          detectedColor = aiResult.color_dominant.hex;
-        }
-
-        if (aiResult.pattern) {
-          detectedPattern = aiResult.pattern;
-          detectedTags.push(aiResult.pattern.toLowerCase());
-        }
-
-        if (aiResult.category) {
-          detectedName = `${aiResult.colour?.dominant || ''} ${aiResult.category}`.trim();
-        }
-      }
-    } catch (err) {
-      console.info('Client fallback for cloth AI vision:', err.message);
-    }
-
-    // 2. Cloud-Based 2D-to-3D Garment Generation (Google Gemini Multimodal AI)
-    setUploadStatus('Analyzing & Generating 3D Garment with Google Gemini AI…');
-    let cloud3DResult = null;
-    try {
-      const initTask = await start3DGarmentGeneration(file, {
-        category: detectedCategory,
-        name: detectedName,
-      });
-
-      if (initTask?.taskId) {
-        cloud3DResult = await pollGarmentGenerationTask(
-          initTask.taskId,
-          ({ progress }) => {
-            setUploadStatus(`Generating 3D Garment with Gemini AI (${progress}%)…`);
-          },
-          60,
-          1500,
-          initTask
-        );
-      }
-    } catch (cloudErr) {
-      console.info('[Gemini 3D Generation Notice]:', cloudErr.message);
-    }
-
-    // 3. Local Texture & PBR Normal/Roughness Baking
-    setUploadStatus('Baking Fabric PBR Materials…');
-    let convertedPbr = null;
-    let convertedCloth3D = null;
-    try {
-      const cloth3D = await convert2DClothTo3D(file, {
-        category: detectedCategory,
-        color: detectedColor,
-        name: detectedName,
-        pattern: detectedPattern
-      });
-      if (cloth3D?.success && cloth3D.pbrMaterial) {
-        convertedPbr = cloth3D.pbrMaterial;
-        convertedCloth3D = cloth3D;
-      }
-    } catch (conversionErr) {
-      console.warn('3D cloth conversion error:', conversionErr.message);
-    }
-
-    let readyItem = {
-      id: `custom-${Date.now()}`,
-      name: detectedName || 'Custom Uploaded Piece',
-      category: detectedCategory,
-      price: 110,
-      discountPrice: null,
-      rating: 5.0,
-      reviewsCount: 1,
-      description: 'Your custom clothing item generated via Cloud 3D AI and stored in MongoDB Atlas.',
-      details: ['Cloud-Generated 3D GLB Asset', 'Auto-Rigged & Skeleton-Bound', 'High-Res PBR Preview'],
-      sizes: ['XS', 'S', 'M', 'L'],
-      colors: [{ name: 'Custom Hue', hex: detectedColor }],
-      primaryColor: detectedColor,
-      brand: 'My Closet',
-      inStock: true,
-      stockCount: 1,
-      featured: true,
-      tags: detectedTags,
-      garmentType: detectedCategory === 'dresses' ? 'dress' : detectedCategory === 'trousers' ? 'bottom' : detectedCategory === 'shoes' ? 'shoes' : 'top',
-      silhouette: cloud3DResult?.silhouette || (convertedCloth3D?.modelKey === 'floral_puff'
-        ? 'floral-puff'
-        : detectedCategory === 'dresses'
-        ? 'slip-dress'
-        : detectedCategory === 'trousers'
-        ? 'wide-jeans'
-        : 'custom'),
-      position3D: [0, 2.0, -1.8],
-      complementaryIds: [],
-      image: localImageUrl,
-      pbrMaterial: convertedPbr,
-      cloth3D: convertedCloth3D,
-      modelUrl: cloud3DResult?.modelUrl || (convertedCloth3D?.modelKey === 'floral_puff' ? '/models/garments/dress_floral_puff.glb' : null),
-      model3d: cloud3DResult,
-    };
-
-    // Immediate 3D dressing
-    handleTryOn(readyItem);
-    setSelectedProduct(readyItem);
-    setUploadedClothes((prev) => [readyItem, ...prev]);
-
-    // 3. Store garment metadata and upload file to MongoDB backend
-    setUploadStatus('Saving to MongoDB Atlas…');
-    try {
-      const token = authToken || (await ensureAuth());
-      if (token) {
-        if (!authToken) {
-          setAuthToken(token);
-          setCurrentUser(getSavedUser());
-        }
-
-        // POST /api/clothes -> creates MongoDB document
-        const savedBackendItem = await addClothingItem(token, {
-          name:        readyItem.name,
-          category:    detectedCategory,
-          color:       detectedColor,
-          brand:       'My Closet',
-          description: readyItem.description,
-          size:        'M',
-          tags:        detectedTags,
-          model3d:     readyItem.model3d || undefined
-        });
-
-        if (savedBackendItem?.backendId) {
-          readyItem.backendId = savedBackendItem.backendId;
-          readyItem.id = `backend_${savedBackendItem.backendId}`;
-
-          // POST /api/clothes/:id/image -> uploads actual image file
-          setUploadStatus('Uploading Image File to Database…');
-          const imageResult = await uploadClothingImage(token, savedBackendItem.backendId, file);
-          if (imageResult?.image) {
-            readyItem.image = imageResult.image;
-          }
-        }
-
-        // Fetch fresh list from MongoDB to ensure absolute parity
-        const freshList = await getWardrobe(token);
-        if (freshList && freshList.length > 0) {
-          setBackendWardrobe(freshList);
-        }
-
-        showToast(`"${readyItem.name}" saved to MongoDB & added to your Wardrobe!`);
-      }
-    } catch (saveErr) {
-      console.warn('MongoDB save error:', saveErr.message);
-      showToast(`Uploaded locally (${saveErr.message})`);
-    } finally {
-      setIsUploadingCloth(false);
-      setUploadStatus('');
-      setPanelTab('wardrobe'); // Automatically open and display in Wardrobe view!
+      setExtractionModal((prev) => ({
+        ...prev,
+        stage: 'preview',
+        extractedImage: extractedUrl,
+        maskImage: maskUrl,
+        geminiData: extractRes.geminiAnalysis || null,
+      }));
+    } catch (extractErr) {
+      console.warn('[Garment Extraction Notice]:', extractErr.message);
+      // Graceful fallback to local image if microservice is starting up
+      setExtractionModal((prev) => ({
+        ...prev,
+        stage: 'preview',
+        extractedImage: localImageUrl,
+        maskImage: null,
+        geminiData: null,
+      }));
     }
 
     if (e.target) e.target.value = '';
+  };
+
+  // --- Garment Extraction Confirmation: Runs 3D Generation & Virtual Try-On ---
+  const handleConfirmExtraction = async () => {
+    const file = extractionModal.pendingFile;
+    if (!file) return;
+
+    setExtractionModal((prev) => ({ ...prev, stage: 'synthesizing' }));
+    setIsUploadingCloth(true);
+    setUploadStatus('Generating 3D Garment with Gemini Multimodal AI…');
+
+    try {
+      const geminiData = extractionModal.geminiData;
+      let detectedCategory = activeCategory !== 'all' ? activeCategory : 'tops';
+      if (geminiData?.garmentCategory) {
+        const cat = (geminiData.garmentCategory || '').toLowerCase();
+        if (cat.includes('dress')) detectedCategory = 'dresses';
+        else if (cat.includes('trouser') || cat.includes('pant') || cat.includes('jean') || cat.includes('skirt')) detectedCategory = 'trousers';
+        else if (cat.includes('shoe') || cat.includes('footwear')) detectedCategory = 'shoes';
+        else if (cat.includes('jacket') || cat.includes('coat')) detectedCategory = 'outerwear';
+        else detectedCategory = 'tops';
+      }
+
+      let detectedName = file.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ');
+      detectedName = detectedName.replace(/\b\w/g, (c) => c.toUpperCase());
+      if (geminiData?.designAnalysis?.skirtStyle) {
+        detectedName = `${geminiData.primaryColor || ''} ${geminiData.designAnalysis.skirtStyle} Dress`.trim();
+      }
+
+      let detectedColor = geminiData?.primaryColor || '#e5779c';
+      let detectedPattern = geminiData?.patternType || 'Plain';
+      let detectedTags = ['custom', 'uploaded', 'extracted', 'wardrobe'];
+      if (detectedPattern) detectedTags.push(detectedPattern.toLowerCase());
+
+      // 1. Cloud-Based 2D-to-3D Garment Generation
+      let cloud3DResult = null;
+      try {
+        const initTask = await start3DGarmentGeneration(file, {
+          category: detectedCategory,
+          name: detectedName,
+        });
+
+        if (initTask?.taskId) {
+          cloud3DResult = await pollGarmentGenerationTask(
+            initTask.taskId,
+            ({ progress }) => {
+              setUploadStatus(`Generating 3D Garment with Gemini AI (${progress}%)…`);
+            },
+            60,
+            1500,
+            initTask
+          );
+        }
+      } catch (cloudErr) {
+        console.info('[Gemini 3D Generation Notice]:', cloudErr.message);
+      }
+
+      // 2. Texture & PBR Normal/Roughness Baking with clean extracted cloth image
+      setUploadStatus('Baking Fabric PBR Materials…');
+      let convertedPbr = null;
+      let convertedCloth3D = null;
+      const clothImageToBake = extractionModal.extractedImage || file;
+      try {
+        const cloth3D = await convert2DClothTo3D(clothImageToBake, {
+          category: detectedCategory,
+          color: detectedColor,
+          name: detectedName,
+          pattern: detectedPattern
+        });
+        if (cloth3D?.success && cloth3D.pbrMaterial) {
+          convertedPbr = cloth3D.pbrMaterial;
+          convertedCloth3D = cloth3D;
+        }
+      } catch (conversionErr) {
+        console.warn('3D cloth conversion error:', conversionErr.message);
+      }
+
+      const displayImg = extractionModal.extractedImage || URL.createObjectURL(file);
+      const isFloralOrPuff =
+        detectedName.toLowerCase().includes('floral') ||
+        detectedName.toLowerCase().includes('frock') ||
+        detectedName.toLowerCase().includes('puff') ||
+        detectedCategory === 'dresses';
+
+      let readyItem = {
+        id: `custom-${Date.now()}`,
+        name: detectedName || 'Custom Extracted Piece',
+        category: detectedCategory,
+        price: 110,
+        discountPrice: null,
+        rating: 5.0,
+        reviewsCount: 1,
+        description: 'Authentic 3D garment extracted from photo and fitted to female avatar.',
+        details: ['Background & Person Removed', 'Auto-Rigged & Skeleton-Bound', 'High-Res PBR Textures'],
+        sizes: ['XS', 'S', 'M', 'L'],
+        colors: [{ name: 'Custom Hue', hex: detectedColor }],
+        primaryColor: detectedColor,
+        brand: 'My Closet',
+        inStock: true,
+        stockCount: 1,
+        featured: true,
+        tags: detectedTags,
+        garmentType: detectedCategory === 'dresses' ? 'dress' : detectedCategory === 'trousers' ? 'bottom' : detectedCategory === 'shoes' ? 'shoes' : 'top',
+        silhouette: cloud3DResult?.silhouette || (isFloralOrPuff ? 'floral-puff' : detectedCategory === 'dresses' ? 'slip-dress' : detectedCategory === 'trousers' ? 'wide-jeans' : 'custom'),
+        position3D: [0, 2.0, -1.8],
+        complementaryIds: [],
+        image: displayImg,
+        extractedImage: displayImg,
+        pbrMaterial: convertedPbr,
+        cloth3D: convertedCloth3D,
+        modelUrl: cloud3DResult?.modelUrl || (isFloralOrPuff ? '/models/garments/dress_floral_puff.glb' : null),
+        model3d: cloud3DResult,
+      };
+
+      // Virtual Try-on onto 3D Avatar
+      handleTryOn(readyItem);
+      setSelectedProduct(readyItem);
+      setUploadedClothes((prev) => [readyItem, ...prev]);
+
+      // Save to MongoDB Atlas
+      setUploadStatus('Saving to MongoDB Atlas…');
+      try {
+        const token = authToken || (await ensureAuth());
+        if (token) {
+          if (!authToken) {
+            setAuthToken(token);
+            setCurrentUser(getSavedUser());
+          }
+
+          const savedBackendItem = await addClothingItem(token, {
+            name:        readyItem.name,
+            category:    detectedCategory,
+            color:       detectedColor,
+            brand:       'My Closet',
+            description: readyItem.description,
+            size:        'M',
+            tags:        detectedTags,
+            model3d:     readyItem.model3d || undefined
+          });
+
+          if (savedBackendItem?.backendId) {
+            readyItem.backendId = savedBackendItem.backendId;
+            readyItem.id = `backend_${savedBackendItem.backendId}`;
+
+            const imageResult = await uploadClothingImage(token, savedBackendItem.backendId, file);
+            if (imageResult?.image) {
+              readyItem.image = imageResult.image;
+            }
+          }
+
+          const freshList = await getWardrobe(token);
+          if (freshList && freshList.length > 0) {
+            setBackendWardrobe(freshList);
+          }
+        }
+      } catch (saveErr) {
+        console.warn('MongoDB save error:', saveErr.message);
+      }
+
+      setExtractionModal((prev) => ({ ...prev, isOpen: false }));
+      showToast(`"${readyItem.name}" extracted & fitted onto avatar!`, 'success');
+      setPanelTab('wardrobe');
+    } catch (err) {
+      console.error('Confirm extraction error:', err);
+      setExtractionModal((prev) => ({
+        ...prev,
+        stage: 'error',
+        errorMessage: err.message || 'Failed to synthesize 3D garment'
+      }));
+    } finally {
+      setIsUploadingCloth(false);
+      setUploadStatus('');
+    }
   };
 
   // Filtered Products for Right Wardrobe Sidebar
@@ -1450,6 +1494,27 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* =========================================================
+          GARMENT EXTRACTION & INSPECTION MODAL (OpenCV + Gemini AI)
+          ========================================================= */}
+      <GarmentExtractionModal
+        isOpen={extractionModal.isOpen}
+        onClose={() => setExtractionModal((prev) => ({ ...prev, isOpen: false }))}
+        stage={extractionModal.stage}
+        originalImage={extractionModal.originalImage}
+        extractedImage={extractionModal.extractedImage}
+        maskImage={extractionModal.maskImage}
+        geminiData={extractionModal.geminiData}
+        onConfirm3D={handleConfirmExtraction}
+        onRetry={() => {
+          if (fileInputRef.current) {
+            fileInputRef.current.value = '';
+            fileInputRef.current.click();
+          }
+        }}
+        errorMessage={extractionModal.errorMessage}
+      />
     </div>
   );
 }

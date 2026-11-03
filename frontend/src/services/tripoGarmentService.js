@@ -1,7 +1,9 @@
 /**
  * tripoGarmentService.js
- * Frontend client for Cloud-Based 2D-to-3D Garment Generation
- * Powered by Google Gemini Multimodal AI & Cloud 3D Engine.
+ * Frontend client for:
+ * 1. Garment Extraction & Background/Person Removal (OpenCV GrabCut + Skin Subtraction)
+ * 2. Fashion Intelligence (Google Gemini Multimodal AI)
+ * 3. 3D Model Synthesis & Avatar Fitting
  */
 
 const API_BASE_URL = 'http://localhost:5000/api';
@@ -22,9 +24,48 @@ export async function getTripoApiConfig() {
 }
 
 /**
- * Initiates 2D-to-3D garment generation on the backend via Gemini Multimodal AI
+ * Extracts ONLY the clothing garment from an uploaded photo,
+ * completely stripping background and the human person.
+ *
+ * @param {File|Blob|string} imageSource
+ * @returns {Promise<object>} { extractedImageUrl, maskUrl, geminiAnalysis, width, height, garmentCoverage }
+ */
+export async function extractGarmentOnly(imageSource) {
+  let response;
+
+  if (imageSource instanceof File || imageSource instanceof Blob) {
+    const formData = new FormData();
+    formData.append('image', imageSource, imageSource.name || 'garment.png');
+
+    response = await fetch(`${API_BASE_URL}/garments/extract`, {
+      method: 'POST',
+      body: formData,
+    });
+  } else {
+    response = await fetch(`${API_BASE_URL}/garments/extract`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ originalImageUrl: imageSource }),
+    });
+  }
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Garment extraction failed (HTTP ${response.status}): ${errText}`);
+  }
+
+  const json = await response.json();
+  if (!json.success || !json.data?.extractedImageUrl) {
+    throw new Error(json.message || 'Server did not return extracted garment');
+  }
+
+  return json.data;
+}
+
+/**
+ * Initiates 2D-to-3D garment generation on the backend
  * @param {File|Blob|string} imageSource - File object or image URL
- * @param {object} metadata - { category, name, clothingItemId, color }
+ * @param {object} metadata - { category, name, clothingItemId, color, extractedImageUrl, maskUrl }
  */
 export async function start3DGarmentGeneration(imageSource, metadata = {}) {
   let response;
@@ -35,6 +76,8 @@ export async function start3DGarmentGeneration(imageSource, metadata = {}) {
     if (metadata.category) formData.append('category', metadata.category);
     if (metadata.clothingItemId) formData.append('clothingItemId', metadata.clothingItemId);
     if (metadata.name) formData.append('name', metadata.name);
+    if (metadata.extractedImageUrl) formData.append('extractedImageUrl', metadata.extractedImageUrl);
+    if (metadata.maskUrl) formData.append('maskUrl', metadata.maskUrl);
 
     response = await fetch(`${API_BASE_URL}/garments/generate-3d`, {
       method: 'POST',
@@ -48,6 +91,8 @@ export async function start3DGarmentGeneration(imageSource, metadata = {}) {
       },
       body: JSON.stringify({
         originalImageUrl: typeof imageSource === 'string' ? imageSource : '',
+        extractedImageUrl: metadata.extractedImageUrl || '',
+        maskUrl: metadata.maskUrl || '',
         category: metadata.category || 'dress',
         clothingItemId: metadata.clothingItemId || null,
         name: metadata.name || '',
@@ -70,11 +115,6 @@ export async function start3DGarmentGeneration(imageSource, metadata = {}) {
 
 /**
  * Polls 3D generation task until complete, invoking onProgress callback
- * @param {string} taskId - The task ID to poll
- * @param {function} onProgress - Callback receiving { progress, status }
- * @param {number} maxAttempts - Maximum polling attempts (default: 60 = 2 minutes)
- * @param {number} intervalMs - Polling interval in milliseconds (default: 1500)
- * @param {object} initialData - Optional pre-resolved task data from start3DGarmentGeneration
  */
 export async function pollGarmentGenerationTask(
   taskId,
@@ -83,7 +123,6 @@ export async function pollGarmentGenerationTask(
   intervalMs = 1500,
   initialData = null
 ) {
-  // Fast path: If Gemini already completed in the initial request
   if (initialData && initialData.status === 'success') {
     if (typeof onProgress === 'function') {
       onProgress({
@@ -96,6 +135,8 @@ export async function pollGarmentGenerationTask(
       success: true,
       taskId: initialData.taskId,
       modelUrl: initialData.modelUrl,
+      extractedImageUrl: initialData.extractedImageUrl,
+      maskUrl: initialData.maskUrl,
       renderedImageUrl: initialData.renderedImageUrl,
       silhouette: initialData.silhouette || 'custom',
       geminiAnalysis: initialData.geminiAnalysis,
@@ -132,6 +173,8 @@ export async function pollGarmentGenerationTask(
           success: true,
           taskId: task.taskId,
           modelUrl: task.modelUrl,
+          extractedImageUrl: task.extractedImageUrl,
+          maskUrl: task.maskUrl,
           renderedImageUrl: task.renderedImageUrl,
           silhouette: task.silhouette || 'custom',
           geminiAnalysis: task.geminiAnalysis,
@@ -140,7 +183,7 @@ export async function pollGarmentGenerationTask(
       }
 
       if (task.status === 'failed' || task.status === 'cancelled') {
-        throw new Error(task.errorMessage || 'Cloud 3D garment generation failed or was cancelled');
+        throw new Error(task.errorMessage || '3D garment generation failed or was cancelled');
       }
     } catch (pollErr) {
       console.warn(`[tripoGarmentService] Polling attempt ${attempts} warning:`, pollErr.message);

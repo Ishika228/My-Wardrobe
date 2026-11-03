@@ -43,7 +43,7 @@ const extractJsonFromText = (text) => {
  * @param {Buffer|string} imageInput - Buffer or file path to clothing image
  * @param {string} filename - original filename
  * @param {string} mimeType - image MIME type
- * @returns {Promise<object>} 3D garment specifications and model mapping
+ * @returns {Promise<object>} 3D garment specifications, bounding boxes, and model mapping
  */
 export const analyzeAndGenerate3DWithGemini = async (imageInput, filename = 'clothing.png', mimeType = 'image/png') => {
   const { apiKey, isConfigured, model } = getGeminiConfig();
@@ -68,7 +68,7 @@ export const analyzeAndGenerate3DWithGemini = async (imageInput, filename = 'clo
   console.log(`[Gemini Service] Sending image (${buffer.length} bytes, ${mimeType}) to Gemini Multimodal AI...`);
 
   const prompt = `You are a Lead 3D Virtual Fashion Engineer.
-Analyze this 2D clothing image with extreme precision and synthesize its complete 3D garment model reconstruction parameters for our 3D avatar virtual try-on engine.
+Analyze this fashion photograph with extreme precision. Identify whether a person is wearing the garment, locate the garment boundaries, and synthesize its complete 3D garment model reconstruction parameters for our 3D avatar virtual try-on engine.
 
 Return ONLY a valid JSON object (no explanations, no preamble) with this exact schema:
 {
@@ -76,6 +76,9 @@ Return ONLY a valid JSON object (no explanations, no preamble) with this exact s
   "category": "dresses" | "tops" | "trousers" | "outerwear" | "shoes" | "accessories",
   "garmentType": "dress" | "top" | "bottom" | "shoes",
   "silhouette": "floral-puff" | "slip-dress" | "saree" | "wide-jeans" | "casual-top" | "custom",
+  "hasPerson": boolean,
+  "garmentBoundingBox": [ymin, xmin, ymax, xmax],
+  "skinRegions": [[ymin, xmin, ymax, xmax]],
   "neckline": "square" | "sweetheart" | "v-neck" | "crew" | "round" | "off-shoulder",
   "sleeves": "puff" | "sleeveless" | "short" | "long" | "ruffled",
   "waist": "ribbon-bow" | "sash" | "fitted" | "empire" | "elastic",
@@ -90,7 +93,8 @@ Return ONLY a valid JSON object (no explanations, no preamble) with this exact s
     "clearcoat": 0.25,
     "clearcoatRoughness": 0.08
   }
-}`;
+}
+Note: bounding box coordinates must be normalized integers from 0 to 1000.`;
 
   const requestBody = {
     contents: [
@@ -108,11 +112,10 @@ Return ONLY a valid JSON object (no explanations, no preamble) with this exact s
     ],
     generationConfig: {
       temperature: 0.1,
-      maxOutputTokens: 800,
+      maxOutputTokens: 900,
     },
   };
 
-  // Try gemini-flash-lite-latest, then gemini-3.8-flash
   const candidateModels = [model, 'gemini-3.8-flash', 'gemini-flash-latest'];
   let lastError = null;
   let rawText = null;

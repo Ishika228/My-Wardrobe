@@ -2,8 +2,8 @@ import mongoose from 'mongoose';
 
 /**
  * GarmentModel Schema
- * Tracks cloud-based 2D-to-3D garment generation tasks (e.g., Tripo3D API v3),
- * generated GLB assets, and avatar fitting configuration.
+ * Tracks garment extraction, background/person segmentation masks,
+ * Google Gemini Multimodal AI fashion intelligence, and 3D GLB models.
  */
 const garmentModelSchema = new mongoose.Schema(
   {
@@ -26,7 +26,7 @@ const garmentModelSchema = new mongoose.Schema(
     },
     service: {
       type: String,
-      default: 'tripo3d',
+      default: 'gemini_multimodal_ai',
       trim: true,
     },
     status: {
@@ -46,6 +46,14 @@ const garmentModelSchema = new mongoose.Schema(
       trim: true,
     },
     originalImageUrl: {
+      type: String,
+      trim: true,
+    },
+    extractedImageUrl: {
+      type: String,
+      trim: true,
+    },
+    maskUrl: {
       type: String,
       trim: true,
     },
@@ -77,6 +85,10 @@ const garmentModelSchema = new mongoose.Schema(
       type: String,
       default: 'glb',
     },
+    geminiAnalysis: {
+      type: Object,
+      default: null,
+    },
     errorMessage: {
       type: String,
       trim: true,
@@ -99,4 +111,3 @@ garmentModelSchema.index({ clothingItemId: 1, status: 1 });
 const GarmentModel = mongoose.model('GarmentModel', garmentModelSchema);
 
 export default GarmentModel;
-
