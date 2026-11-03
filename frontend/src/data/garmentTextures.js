@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { convert2DClothTo3D } from '../services/imageTo3DService.js';
 
 // Procedural high-resolution textile texture synthesis for photorealistic fabrics
 export function createFabricTexture(type = 'denim', primaryColor = '#5e84a8', accentColor = '#3d5c7a') {
@@ -213,8 +214,20 @@ function normalizeHexColor(c) {
   return COLOR_MAP[lower] || c;
 }
 
+// Cache for 2D-to-3D converted PBR materials
+const pbrConvertedCache = new Map();
+
 // Generate complete PBR material set for a clothing piece
 export function createGarmentPBRMaterial(garmentItem, defaultType = 'ribbed') {
+  if (garmentItem?.pbrMaterial) {
+    return garmentItem.pbrMaterial;
+  }
+
+  const imageSrc = garmentItem?.image;
+  if (imageSrc && typeof imageSrc === 'string' && pbrConvertedCache.has(imageSrc)) {
+    return pbrConvertedCache.get(imageSrc);
+  }
+
   const rawColor = garmentItem?.primaryColor || garmentItem?.color || garmentItem?.colors?.[0]?.hex || '#ffffff';
   const color = normalizeHexColor(rawColor);
   const silhouette = (garmentItem?.silhouette || '').toLowerCase();
@@ -282,39 +295,42 @@ export function createGarmentPBRMaterial(garmentItem, defaultType = 'ribbed') {
     metalness = 0.05;
   }
 
-  let map = createFabricTexture(fabricType, color);
+  const fabricTexture = createFabricTexture(fabricType, color);
 
-  // If a real uploaded photo or image URL exists, project it onto the PBR garment material
-  if (
-    garmentItem?.image &&
-    typeof garmentItem.image === 'string' &&
-    (garmentItem.image.startsWith('http') || garmentItem.image.startsWith('data:') || garmentItem.image.startsWith('/uploads'))
-  ) {
-    try {
-      const loader = new THREE.TextureLoader();
-      loader.setCrossOrigin('anonymous');
-      const customTex = loader.load(garmentItem.image, (tex) => {
-        tex.wrapS = THREE.RepeatWrapping;
-        tex.wrapT = THREE.RepeatWrapping;
-        tex.repeat.set(1.5, 1.5);
-        tex.needsUpdate = true;
-      });
-      customTex.wrapS = THREE.RepeatWrapping;
-      customTex.wrapT = THREE.RepeatWrapping;
-      customTex.repeat.set(1.5, 1.5);
-      map = customTex;
-    } catch (e) {
-      console.warn('Could not load custom garment texture map:', e.message);
-    }
-  }
-
-  return new THREE.MeshPhysicalMaterial({
+  const material = new THREE.MeshPhysicalMaterial({
     color: new THREE.Color(color),
-    map,
+    map: fabricTexture,
     roughness,
     metalness,
     clearcoat,
     clearcoatRoughness,
     envMapIntensity: 1.2
   });
+
+  // If a real uploaded photo or image URL exists, convert 2D cloth image to 3D garment asset
+  if (
+    imageSrc &&
+    typeof imageSrc === 'string' &&
+    (imageSrc.startsWith('http') || imageSrc.startsWith('data:') || imageSrc.startsWith('blob:') || imageSrc.startsWith('/uploads'))
+  ) {
+    pbrConvertedCache.set(imageSrc, material);
+    convert2DClothTo3D(imageSrc, {
+      category: garmentItem?.category || fabricType,
+      color,
+      name: garmentItem?.name || ''
+    }).then((res) => {
+      if (res?.success && res.textures) {
+        material.map = res.textures.baseColor;
+        material.normalMap = res.textures.normal;
+        material.normalScale = new THREE.Vector2(1.3, 1.3);
+        material.roughnessMap = res.textures.roughness;
+        material.color.set('#ffffff'); // preserve true cloth colors
+        material.needsUpdate = true;
+      }
+    }).catch((err) => {
+      console.warn('Asynchronous 2D-to-3D cloth conversion fallback:', err.message);
+    });
+  }
+
+  return material;
 }

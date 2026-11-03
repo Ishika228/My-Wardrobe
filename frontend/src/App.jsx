@@ -44,6 +44,7 @@ import WishlistDrawer from './components/WishlistDrawer.jsx';
 import GroqAIPanel from './components/GroqAIPanel.jsx';
 import { PRODUCTS, CATEGORIES, getRecommendations } from './data/products.js';
 import { analyzeClothingImage } from './services/aiService.js';
+import { convert2DClothTo3D } from './services/imageTo3DService.js';
 import {
   getAuthToken,
   getSavedUser,
@@ -574,7 +575,24 @@ export default function App() {
       console.info('Client fallback for cloth AI vision:', err.message);
     }
 
-    // 2. Prepare local item for zero-latency 3D try-on
+    // 2. Prepare local item and synthesize 3D physical garment asset (Claude Skill)
+    setUploadStatus('Converting 2D Image to 3D Garment (Claude Skill)…');
+    let convertedPbr = null;
+    let convertedCloth3D = null;
+    try {
+      const cloth3D = await convert2DClothTo3D(file, {
+        category: detectedCategory,
+        color: detectedColor,
+        name: detectedName
+      });
+      if (cloth3D?.success && cloth3D.pbrMaterial) {
+        convertedPbr = cloth3D.pbrMaterial;
+        convertedCloth3D = cloth3D;
+      }
+    } catch (conversionErr) {
+      console.warn('3D cloth conversion fallback:', conversionErr.message);
+    }
+
     let readyItem = {
       id: `custom-${Date.now()}`,
       name: detectedName || 'Custom Uploaded Piece',
@@ -597,7 +615,9 @@ export default function App() {
       silhouette: detectedCategory === 'dresses' ? 'slip-dress' : 'custom',
       position3D: [0, 2.0, -1.8],
       complementaryIds: [],
-      image: localImageUrl
+      image: localImageUrl,
+      pbrMaterial: convertedPbr,
+      cloth3D: convertedCloth3D,
     };
 
     // Immediate 3D dressing

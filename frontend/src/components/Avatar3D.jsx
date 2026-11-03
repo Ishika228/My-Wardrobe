@@ -257,15 +257,16 @@ export default function Avatar3D({
       const dressMat = createGarmentPBRMaterial(dressItem);
 
       top.material = dressMat;
+      top.material.needsUpdate = true;
       top.visible = true;
 
       bottom.material = dressMat;
+      bottom.material.needsUpdate = true;
       bottom.visible = true;
     } else {
       // 2. Separate Top
       if (outfit?.top) {
         top.material = createGarmentPBRMaterial(outfit.top, 'ribbed');
-        top.visible = true;
       } else {
         // Default chic ivory silk crop tank
         top.material = createGarmentPBRMaterial({
@@ -273,13 +274,13 @@ export default function Avatar3D({
           category: 'tops',
           silhouette: 'crop-tank'
         });
-        top.visible = true;
       }
+      top.material.needsUpdate = true;
+      top.visible = true;
 
       // 3. Separate Bottom (Jeans, Trousers, Skirt)
       if (outfit?.bottom) {
         bottom.material = createGarmentPBRMaterial(outfit.bottom, 'denim');
-        bottom.visible = true;
       } else {
         // Default indigo twill denim
         bottom.material = createGarmentPBRMaterial({
@@ -287,8 +288,9 @@ export default function Avatar3D({
           category: 'trousers',
           silhouette: 'jeans'
         });
-        bottom.visible = true;
       }
+      bottom.material.needsUpdate = true;
+      bottom.visible = true;
     }
 
     // 4. Footwear
@@ -301,6 +303,7 @@ export default function Avatar3D({
         silhouette: 'sneaker'
       });
     }
+    shoes.material.needsUpdate = true;
   }, [outfit, avatarScene]);
 
   // Try-on glowing sparkle aura
